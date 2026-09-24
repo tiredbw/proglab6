@@ -1,6 +1,7 @@
 package csv;
 
 import model.ClosedTicket;
+import model.Editable;
 import model.HomeVisitTicket;
 import model.Ticket;
 
@@ -13,13 +14,18 @@ import java.time.LocalDateTime;
 import java.time.format.DateTimeParseException;
 import java.util.ArrayList;
 import java.util.List;
+import java.util.Objects;
 
 public class CsvLoader {
-    private final ArrayList<String> errors = new ArrayList<>();
+    private final ArrayList<String> lastErrors = new ArrayList<>();
 
     public ArrayList<Ticket> load(Path file) throws IOException {
+        return loadWithReport(file).tickets();
+    }
+
+    public LoadResult loadWithReport(Path file) throws IOException {
         ArrayList<Ticket> tickets = new ArrayList<>();
-        errors.clear();
+        ArrayList<String> errors = new ArrayList<>();
 
         try (BufferedReader reader = Files.newBufferedReader(file, StandardCharsets.UTF_8)) {
             String line;
@@ -27,7 +33,7 @@ public class CsvLoader {
 
             while ((line = reader.readLine()) != null) {
                 lineNumber++;
-                if (lineNumber == 1 && line.equals("type;cardNumber;fullName;room;urgency;takenAt;address")) {
+                if (lineNumber == 1 && isHeader(line)) {
                     continue;
                 }
                 if (line.isBlank()) {
@@ -38,18 +44,25 @@ public class CsvLoader {
                     tickets.add(parseLine(line));
                 } catch (CsvLoadException e) {
                     errors.add("Строка " + lineNumber + " [" + e.getCode() + "]: " + e.getMessage());
+                } catch (RuntimeException e) {
+                    errors.add("Строка " + lineNumber + " [" + CsvErrorCode.UNEXPECTED_ERROR
+                            + "]: неожиданная ошибка: " + e.getMessage());
                 }
             }
         }
 
-        return tickets;
+        lastErrors.clear();
+        lastErrors.addAll(errors);
+        return new LoadResult(tickets, errors);
     }
 
     public Ticket parseLine(String line) throws CsvLoadException {
-        String[] parts = line.split(";", -1);
-        if (parts.length != 7) {
+        Objects.requireNonNull(line, "line");
+
+        String[] parts = line.split(CsvFormat.DELIMITER, -1);
+        if (parts.length != CsvFormat.COLUMN_COUNT) {
             throw new CsvLoadException(CsvErrorCode.WRONG_FIELD_COUNT,
-                    "ожидалось 7 полей, получено " + parts.length);
+                    "ожидалось " + CsvFormat.COLUMN_COUNT + " полей, получено " + parts.length);
         }
 
         String type = parts[0].trim();
@@ -83,21 +96,44 @@ public class CsvLoader {
                     "неверный формат даты и времени");
         }
 
-        return switch (type) {
-            case "HOME" -> {
+        Ticket ticket = switch (type) {
+            case HomeVisitTicket.CSV_TYPE -> {
                 if (address.isEmpty()) {
                     throw new CsvLoadException(CsvErrorCode.EMPTY_REQUIRED_FIELD,
                             "для талона на дом нужен адрес");
                 }
                 yield new HomeVisitTicket(cardNumber, fullName, room, urgency, takenAt, address);
             }
-            case "CLOSED" -> new ClosedTicket(cardNumber, fullName, room, urgency, takenAt);
+            case ClosedTicket.CSV_TYPE -> new ClosedTicket(cardNumber, fullName, room, urgency, takenAt);
             default -> throw new CsvLoadException(CsvErrorCode.UNKNOWN_TYPE,
                     "неизвестный тип " + type);
         };
+
+        List<String> validationErrors = ticket instanceof Editable editable
+                ? editable.validate()
+                : ticket.validateCommon();
+        if (!validationErrors.isEmpty()) {
+            throw new CsvLoadException(CsvErrorCode.INVALID_DATA, String.join("; ", validationErrors));
+        }
+        return ticket;
+    }
+
+    private boolean isHeader(String line) {
+        return normalizeLine(line).equals(normalizeLine(CsvFormat.HEADER));
+    }
+
+    private String normalizeLine(String line) {
+        String normalized = line == null ? "" : line.trim();
+        if (!normalized.isEmpty() && normalized.charAt(0) == '\uFEFF') {
+            normalized = normalized.substring(1);
+        }
+        return normalized;
     }
 
     public List<String> getErrors() {
-        return new ArrayList<>(errors);
+        return new ArrayList<>(lastErrors);
+    }
+
+    public record LoadResult(ArrayList<Ticket> tickets, ArrayList<String> errors) {
     }
 }
