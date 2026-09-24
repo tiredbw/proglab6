@@ -15,6 +15,7 @@ import javafx.scene.layout.Priority;
 import javafx.scene.layout.VBox;
 import javafx.stage.FileChooser;
 import javafx.stage.Stage;
+import model.ClosedTicket;
 import model.Editable;
 import model.HomeVisitTicket;
 import model.Ticket;
@@ -24,8 +25,8 @@ import java.io.IOException;
 import java.util.ArrayList;
 
 public class MainController {
+
     private final Stage stage;
-    private final ArrayList<Ticket> tickets = new ArrayList<>();
     private final ObservableList<Ticket> tableItems = FXCollections.observableArrayList();
     private final TableView<Ticket> table = new TableView<>(tableItems);
     private final Button editButton = new Button("Изменить");
@@ -48,7 +49,9 @@ public class MainController {
 
         editButton.setDisable(true);
         table.getSelectionModel().selectedItemProperty().addListener((observable, oldValue, selectedTicket) ->
-                editButton.setDisable(!(selectedTicket instanceof Editable)));
+                editButton.setDisable(selectedTicket == null
+                        || !(selectedTicket instanceof Editable)
+                        || selectedTicket instanceof ClosedTicket));
 
         addButton.setOnAction(event -> addTicket());
         editButton.setOnAction(event -> editTicket());
@@ -64,29 +67,31 @@ public class MainController {
         VBox root = new VBox(14, title, table, buttonsBox);
         root.setPadding(new Insets(18));
         VBox.setVgrow(table, Priority.ALWAYS);
+
         return root;
     }
 
     private void addTicket() {
-        TicketDialog.showForCreate(stage).ifPresent(ticket -> {
-            tickets.add(ticket);
-            tableItems.add(ticket);
-        });
+        TicketDialog.showForCreate(stage).ifPresent(tableItems::add);
     }
 
     private void editTicket() {
         Ticket selectedTicket = table.getSelectionModel().getSelectedItem();
-        if (!(selectedTicket instanceof HomeVisitTicket homeTicket)) {
+        if (selectedTicket == null || !(selectedTicket instanceof Editable) || selectedTicket instanceof ClosedTicket) {
             return;
         }
 
-        TicketDialog.showForEdit(stage, homeTicket).ifPresent(updated -> {
-            homeTicket.setCardNumber(updated.getCardNumber());
-            homeTicket.setFullName(updated.getFullName());
-            homeTicket.setRoom(updated.getRoom());
-            homeTicket.setUrgency(updated.getUrgency());
-            homeTicket.setTakenAt(updated.getTakenAt());
-            homeTicket.setAddress(updated.getAddress());
+        TicketDialog.showForEdit(stage, selectedTicket).ifPresent(updated -> {
+            selectedTicket.setCardNumber(updated.getCardNumber());
+            selectedTicket.setFullName(updated.getFullName());
+            selectedTicket.setRoom(updated.getRoom());
+            selectedTicket.setUrgency(updated.getUrgency());
+            selectedTicket.setTakenAt(updated.getTakenAt());
+
+            if (selectedTicket instanceof HomeVisitTicket homeTicket && updated instanceof HomeVisitTicket updatedHome) {
+                homeTicket.setAddress(updatedHome.getAddress());
+            }
+
             table.refresh();
         });
     }
@@ -102,14 +107,13 @@ public class MainController {
         try {
             CsvLoader.LoadResult result = loader.loadWithReport(file.toPath());
             ArrayList<Ticket> loadedTickets = result.tickets();
-            tickets.addAll(loadedTickets);
-            tableItems.addAll(loadedTickets);
+            tableItems.setAll(loadedTickets);
 
             if (!result.errors().isEmpty()) {
-                Dialogs.warning(stage, "Часть строк пропущена:\n" + String.join("\n", result.errors()));
+                Dialogs.warning(stage, "Пропущены битые строки:\n" + String.join("\n", result.errors()));
             }
         } catch (IOException e) {
-            Dialogs.error(stage, "Не удалось прочитать CSV: " + e.getMessage());
+            Dialogs.error(stage, "Ошибка чтения CSV: " + e.getMessage());
         }
     }
 
@@ -121,9 +125,9 @@ public class MainController {
         }
 
         try {
-            new CsvSaver().save(file.toPath(), tickets);
+            new CsvSaver().save(file.toPath(), tableItems);
         } catch (IOException | IllegalArgumentException e) {
-            Dialogs.error(stage, "Не удалось сохранить CSV: " + e.getMessage());
+            Dialogs.error(stage, "Ошибка сохранения CSV: " + e.getMessage());
         }
     }
 
@@ -133,5 +137,4 @@ public class MainController {
         chooser.getExtensionFilters().add(new FileChooser.ExtensionFilter("CSV (*.csv)", "*.csv"));
         return chooser;
     }
-
 }

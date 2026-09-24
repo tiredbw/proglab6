@@ -16,7 +16,6 @@ public class CsvSaver {
         try (BufferedWriter writer = Files.newBufferedWriter(file, StandardCharsets.UTF_8)) {
             writer.write(CsvFormat.HEADER);
             writer.newLine();
-
             for (Ticket ticket : tickets) {
                 writer.write(toLine(ticket));
                 writer.newLine();
@@ -27,14 +26,13 @@ public class CsvSaver {
     private String toLine(Ticket ticket) {
         String type;
         String address = "";
-
         if (ticket instanceof HomeVisitTicket homeTicket) {
             type = HomeVisitTicket.CSV_TYPE;
             address = homeTicket.getAddress();
         } else if (ticket instanceof ClosedTicket) {
             type = ClosedTicket.CSV_TYPE;
         } else {
-            throw new IllegalArgumentException("Неподдерживаемый тип талона");
+            type = Ticket.CSV_TYPE;
         }
 
         return String.join(CsvFormat.DELIMITER,

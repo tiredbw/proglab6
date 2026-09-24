@@ -4,7 +4,9 @@ import java.time.LocalDateTime;
 import java.util.ArrayList;
 import java.util.List;
 
-public class Ticket {
+public class Ticket implements Editable {
+    public static final String CSV_TYPE = "TICKET";
+
     private String cardNumber;
     private String fullName;
     private String room;
@@ -59,17 +61,21 @@ public class Ticket {
         this.takenAt = takenAt;
     }
 
+    @Override
+    public List<String> validate() {
+        return validateCommon();
+    }
+
     public List<String> validateCommon() {
         List<String> errors = new ArrayList<>();
-        validateRequired("Не указан номер карты", cardNumber, errors);
-        validateRequired("Не указано ФИО", fullName, errors);
-        validateRequired("Не указан кабинет", room, errors);
-
+        validateRequired("Номер карты не может быть пустым", cardNumber, errors);
+        validateRequired("ФИО не может быть пустым", fullName, errors);
+        validateRequired("Кабинет не может быть пустым", room, errors);
         if (urgency < 0 || urgency > 3) {
             errors.add("Срочность должна быть от 0 до 3");
         }
         if (takenAt == null) {
-            errors.add("Не указано время взятия");
+            errors.add("Время взятия не указано");
         }
         return errors;
     }
@@ -80,13 +86,13 @@ public class Ticket {
             return;
         }
         if (value.contains(";")) {
-            errors.add("Поля не должны содержать символ ';'");
+            errors.add(message + " не может содержать ';'");
         }
     }
 
     @Override
     public String toString() {
-        return cardNumber + ", " + fullName + ", кабинет " + room
-                + ", срочность " + urgency + ", " + takenAt;
+        return cardNumber + ", " + fullName + ", каб. " + room
+                + ", срочность: " + urgency + ", " + takenAt;
     }
 }
