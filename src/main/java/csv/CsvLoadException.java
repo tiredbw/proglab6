@@ -7,8 +7,5 @@ public class CsvLoadException extends Exception {
         super(message);
         this.code = code;
     }
-
-    public CsvErrorCode getCode() {
-        return code;
-    }
+    public CsvErrorCode getCode() { return code; }
 }

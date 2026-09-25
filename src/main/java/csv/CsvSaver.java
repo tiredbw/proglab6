@@ -14,9 +14,8 @@ import java.util.List;
 public class CsvSaver {
     public void save(Path file, List<Ticket> tickets) throws IOException {
         try (BufferedWriter writer = Files.newBufferedWriter(file, StandardCharsets.UTF_8)) {
-            writer.write("type;cardNumber;fullName;room;urgency;takenAt;address");
+            writer.write(CsvFormat.HEADER);
             writer.newLine();
-
             for (Ticket ticket : tickets) {
                 writer.write(toLine(ticket));
                 writer.newLine();
@@ -27,18 +26,22 @@ public class CsvSaver {
     private String toLine(Ticket ticket) {
         String type;
         String address = "";
-
         if (ticket instanceof HomeVisitTicket homeTicket) {
-            type = "HOME";
+            type = HomeVisitTicket.CSV_TYPE;
             address = homeTicket.getAddress();
         } else if (ticket instanceof ClosedTicket) {
-            type = "CLOSED";
+            type = ClosedTicket.CSV_TYPE;
         } else {
-            throw new IllegalArgumentException("Неподдерживаемый тип талона");
+            type = Ticket.CSV_TYPE;
         }
 
-        return type + ";" + ticket.getCardNumber() + ";" + ticket.getFullName() + ";"
-                + ticket.getRoom() + ";" + ticket.getUrgency() + ";"
-                + ticket.getTakenAt() + ";" + address;
+        return String.join(CsvFormat.DELIMITER,
+                type,
+                ticket.getCardNumber(),
+                ticket.getFullName(),
+                ticket.getRoom(),
+                String.valueOf(ticket.getUrgency()),
+                String.valueOf(ticket.getTakenAt()),
+                address);
     }
 }
