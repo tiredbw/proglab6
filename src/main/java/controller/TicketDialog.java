@@ -26,7 +26,6 @@ public final class TicketDialog {
     private static final double FORM_VGAP = 10;
     private static final double FORM_PADDING = 12;
 
-    // Значения полей формы, введённые пользователем
     private record TicketForm(String type, String card, String name, String room,
                               String urgency, String time, String address) {
     }

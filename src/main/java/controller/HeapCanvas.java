@@ -17,7 +17,7 @@ public class HeapCanvas extends Pane {
     private static final int MAX_NODES = (1 << MAX_LEVELS) - 1;
 
     private static final double CAPTION_HEIGHT = 26;
-    private static final double ARRAY_HEIGHT = 56;
+    private static final double ARRAY_HEIGHT = 66;
     private static final double MARGIN = 10;
     private static final double MAX_RADIUS = 17;
     private static final double RADIUS_TO_SLOT = 0.42;
