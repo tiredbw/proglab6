@@ -30,3 +30,6 @@ replay_pid*
 # macOS
 .DS_Store
 ._*
+
+# Local prompt files
+/Claude outputs/
