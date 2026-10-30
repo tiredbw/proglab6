@@ -1,0 +1,32 @@
+{
+  "formatVersion": 1,
+  "tickets": [
+    {
+      "type": "TICKET",
+      "cardNumber": "K-1001",
+      "fullName": "Иванов Иван Иванович",
+      "room": "101",
+      "urgency": 2,
+      "takenAt": "2026-09-24T10:30:00",
+      "address": ""
+    },
+    {
+      "type": "HOME",
+      "cardNumber": "K-1002",
+      "fullName": "Петрова Анна Сергеевна",
+      "room": "На дому",
+      "urgency": 0,
+      "takenAt": "2026-09-24T09:15:00",
+      "address": "ул. Ленина, 12"
+    },
+    {
+      "type": "CLOSED",
+      "cardNumber": "K-1003",
+      "fullName": "Сидоров Пётр Ильич",
+      "room": "204",
+      "urgency": 3,
+      "takenAt": "2026-09-23T16:45:00",
+      "address": ""
+    }
+  ]
+}

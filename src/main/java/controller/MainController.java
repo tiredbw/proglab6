@@ -1,140 +1,220 @@
 package controller;
 
-import csv.CsvLoader;
-import csv.CsvSaver;
 import javafx.collections.FXCollections;
 import javafx.collections.ObservableList;
 import javafx.geometry.Insets;
-import javafx.geometry.Pos;
+import javafx.geometry.Orientation;
 import javafx.scene.Parent;
 import javafx.scene.control.Button;
 import javafx.scene.control.Label;
+import javafx.scene.control.SplitPane;
 import javafx.scene.control.TableView;
-import javafx.scene.layout.HBox;
+import javafx.scene.layout.FlowPane;
 import javafx.scene.layout.Priority;
 import javafx.scene.layout.VBox;
-import javafx.stage.FileChooser;
 import javafx.stage.Stage;
-import model.ClosedTicket;
 import model.Editable;
-import model.HomeVisitTicket;
+import model.RegularTicket;
 import model.Ticket;
+import service.RaceDemo;
+import service.TicketGenerator;
+import structure.TicketHeap;
 
-import java.io.File;
-import java.io.IOException;
-import java.util.ArrayList;
+import java.util.List;
 
 public class MainController {
+    public static final String TITLE = "Электронная очередь поликлиники";
+
+    private static final String TITLE_STYLE = "-fx-font-size: 20px; -fx-font-weight: bold;";
+    private static final double BUTTON_MIN_WIDTH = 135;
+    private static final double BUTTON_GAP = 10;
+    private static final double SECTION_GAP = 12;
+    private static final double ROOT_PADDING = 16;
+    private static final double TABLE_SHARE = 0.42;
+    private static final int DEFAULT_GENERATED = 1000;
+    private static final int MAX_GENERATED = 5_000_000;
+    private static final int DEFAULT_TOP_K = 5;
+    private static final int MAX_TOP_K = 1000;
 
     private final Stage stage;
+    private final TicketHeap<Ticket> heap = new TicketHeap<>(Ticket.PRIORITY);
+    private final TicketGenerator generator = new TicketGenerator();
+    // Копия содержимого кучи для показа в таблице, данные хранятся только в heap
     private final ObservableList<Ticket> tableItems = FXCollections.observableArrayList();
     private final TableView<Ticket> table = new TableView<>(tableItems);
+    private final HeapCanvas heapCanvas = new HeapCanvas(heap);
+    private final TaskPanel tasks;
+    private final FileActions files;
     private final Button editButton = new Button("Изменить");
+    private final Button priorityButton = new Button("Изменить приоритет");
+    private final Button deleteButton = new Button("Удалить");
 
     public MainController(Stage stage) {
         this.stage = stage;
+        this.tasks = new TaskPanel(stage);
+        this.files = new FileActions(stage, heap, tasks, this::refresh);
     }
 
     public Parent createView() {
         TicketTableFactory.configure(table);
 
-        Button addButton = new Button("Добавить");
-        Button loadButton = new Button("Загрузить CSV");
-        Button saveButton = new Button("Сохранить CSV");
-
-        Button[] buttons = {addButton, editButton, loadButton, saveButton};
-        for (Button button : buttons) {
-            button.setMinWidth(135);
-        }
-
         editButton.setDisable(true);
-        table.getSelectionModel().selectedItemProperty().addListener((observable, oldValue, selectedTicket) ->
-                editButton.setDisable(selectedTicket == null
-                        || !(selectedTicket instanceof Editable)
-                        || selectedTicket instanceof ClosedTicket));
+        priorityButton.setDisable(true);
+        deleteButton.setDisable(true);
+        table.getSelectionModel().selectedItemProperty().addListener((observable, oldValue, selectedTicket) -> {
+            editButton.setDisable(!(selectedTicket instanceof Editable));
+            priorityButton.setDisable(!(selectedTicket instanceof Editable));
+            deleteButton.setDisable(selectedTicket == null);
+        });
 
-        addButton.setOnAction(event -> addTicket());
-        editButton.setOnAction(event -> editTicket());
-        loadButton.setOnAction(event -> loadCsv());
-        saveButton.setOnAction(event -> saveCsv());
+        FlowPane fileButtons = buttonRow(
+                button("Добавить", this::addTicket),
+                prepared(editButton, this::editTicket),
+                button("Загрузить CSV", files::loadCsv),
+                button("Сохранить CSV", files::saveCsv),
+                button("Слить с CSV-файлом", files::mergeCsv),
+                button("Экспорт", files::exportQueue),
+                button("Импорт", files::importQueue));
+        FlowPane queueButtons = buttonRow(
+                button("Извлечь минимум", this::extractMin),
+                button("Найти", this::findTicket),
+                prepared(deleteButton, this::deleteTicket),
+                button("Top-K", this::showTopK),
+                prepared(priorityButton, this::changePriority),
+                button("Сгенерировать", this::generate),
+                button("Демонстрация гонки", this::showRace));
 
-        Label title = new Label("Электронная очередь поликлиники");
-        title.setStyle("-fx-font-size: 20px; -fx-font-weight: bold;");
+        VBox toolbar = new VBox(BUTTON_GAP, fileButtons, queueButtons);
+        toolbar.disableProperty().bind(tasks.busyProperty());
 
-        HBox buttonsBox = new HBox(10, addButton, editButton, loadButton, saveButton);
-        buttonsBox.setAlignment(Pos.CENTER_LEFT);
+        SplitPane content = new SplitPane(table, heapCanvas);
+        content.setOrientation(Orientation.VERTICAL);
+        content.setDividerPositions(TABLE_SHARE);
 
-        VBox root = new VBox(14, title, table, buttonsBox);
-        root.setPadding(new Insets(18));
-        VBox.setVgrow(table, Priority.ALWAYS);
+        Label title = new Label(TITLE);
+        title.setStyle(TITLE_STYLE);
 
+        VBox root = new VBox(SECTION_GAP, title, content, toolbar, tasks);
+        root.setPadding(new Insets(ROOT_PADDING));
+        VBox.setVgrow(content, Priority.ALWAYS);
         return root;
     }
 
-    private void addTicket() {
-        TicketDialog.showForCreate(stage).ifPresent(tableItems::add);
+    private Button button(String text, Runnable action) {
+        return prepared(new Button(text), action);
     }
 
-    private void editTicket() {
-        Ticket selectedTicket = table.getSelectionModel().getSelectedItem();
-        if (selectedTicket == null || !(selectedTicket instanceof Editable) || selectedTicket instanceof ClosedTicket) {
-            return;
-        }
+    private Button prepared(Button button, Runnable action) {
+        button.setMinWidth(BUTTON_MIN_WIDTH);
+        button.setOnAction(event -> action.run());
+        return button;
+    }
 
-        TicketDialog.showForEdit(stage, selectedTicket).ifPresent(updated -> {
-            selectedTicket.setCardNumber(updated.getCardNumber());
-            selectedTicket.setFullName(updated.getFullName());
-            selectedTicket.setRoom(updated.getRoom());
-            selectedTicket.setUrgency(updated.getUrgency());
-            selectedTicket.setTakenAt(updated.getTakenAt());
+    private FlowPane buttonRow(Button... buttons) {
+        return new FlowPane(BUTTON_GAP, BUTTON_GAP, buttons);
+    }
 
-            if (selectedTicket instanceof HomeVisitTicket homeTicket && updated instanceof HomeVisitTicket updatedHome) {
-                homeTicket.setAddress(updatedHome.getAddress());
-            }
+    private void refresh() {
+        tableItems.setAll(heap.toList());
+        heapCanvas.redraw();
+    }
 
-            table.refresh();
+    private Ticket selectedTicket() {
+        return table.getSelectionModel().getSelectedItem();
+    }
+
+    private void addTicket() {
+        TicketDialog.showForCreate(stage).ifPresent(ticket -> {
+            heap.insert(ticket);
+            refresh();
+            table.getSelectionModel().select(ticket);
         });
     }
 
-    private void loadCsv() {
-        FileChooser chooser = createCsvChooser("Загрузить CSV");
-        File file = chooser.showOpenDialog(stage);
-        if (file == null) {
+    private void editTicket() {
+        if (selectedTicket() instanceof RegularTicket ticket) {
+            TicketDialog.showForEdit(stage, ticket).ifPresent(updated ->
+                    updateInHeap(ticket, () -> ticket.copyFrom(updated)));
+        }
+    }
+
+    private void changePriority() {
+        if (selectedTicket() instanceof RegularTicket ticket) {
+            TicketDialog.showForPriority(stage, ticket).ifPresent(priority ->
+                    updateInHeap(ticket, () -> {
+                        ticket.setUrgency(priority.urgency());
+                        ticket.setTakenAt(priority.takenAt());
+                    }));
+        }
+    }
+
+    // Единственное место, где меняется талон из очереди: прямой вызов сеттера сломал бы инвариант кучи
+    private void updateInHeap(Ticket ticket, Runnable change) {
+        heap.changePriority(table.getSelectionModel().getSelectedIndex(), item -> change.run());
+        refresh();
+        table.getSelectionModel().select(ticket);
+    }
+
+    private void deleteTicket() {
+        int index = table.getSelectionModel().getSelectedIndex();
+        if (index >= 0) {
+            Ticket removed = heap.delete(index);
+            refresh();
+            tasks.setStatus("Удалён: " + removed);
+        }
+    }
+
+    private void extractMin() {
+        if (heap.isEmpty()) {
+            tasks.setStatus("Очередь пуста");
             return;
         }
+        Ticket ticket = heap.extractMin();
+        refresh();
+        tasks.setStatus("Извлечён: " + ticket);
+    }
 
-        CsvLoader loader = new CsvLoader();
-        try {
-            CsvLoader.LoadResult result = loader.loadWithReport(file.toPath());
-            ArrayList<Ticket> loadedTickets = result.tickets();
-            tableItems.setAll(loadedTickets);
-
-            if (!result.errors().isEmpty()) {
-                Dialogs.warning(stage, "Пропущены битые строки:\n" + String.join("\n", result.errors()));
+    private void findTicket() {
+        Dialogs.askText(stage, "Найти талон", "Номер карты:", "").ifPresent(text -> {
+            String card = text.trim();
+            int index = heap.find(ticket -> ticket.getCardNumber().equals(card));
+            heapCanvas.redraw();
+            if (index < 0) {
+                tasks.setStatus("Карта " + card + " не найдена");
+                return;
             }
-        } catch (IOException e) {
-            Dialogs.error(stage, "Ошибка чтения CSV: " + e.getMessage());
-        }
+            Ticket found = heap.get(index);
+            table.getSelectionModel().select(found);
+            table.scrollTo(found);
+            tasks.setStatus("Найден в ячейке " + index + ": " + found);
+        });
     }
 
-    private void saveCsv() {
-        FileChooser chooser = createCsvChooser("Сохранить CSV");
-        File file = chooser.showSaveDialog(stage);
-        if (file == null) {
-            return;
-        }
-
-        try {
-            new CsvSaver().save(file.toPath(), tableItems);
-        } catch (IOException | IllegalArgumentException e) {
-            Dialogs.error(stage, "Ошибка сохранения CSV: " + e.getMessage());
-        }
+    private void showTopK() {
+        Dialogs.askPositiveInt(stage, "Top-K", "Сколько самых срочных талонов показать:",
+                DEFAULT_TOP_K, MAX_TOP_K).ifPresent(k -> {
+            List<Ticket> top = heap.topK(k);
+            heapCanvas.redraw();
+            StringBuilder text = new StringBuilder();
+            for (int i = 0; i < top.size(); i++) {
+                text.append(i + 1).append(". ").append(top.get(i)).append('\n');
+            }
+            Dialogs.text(stage, "Самые срочные талоны: " + top.size(), text.toString());
+        });
     }
 
-    private FileChooser createCsvChooser(String title) {
-        FileChooser chooser = new FileChooser();
-        chooser.setTitle(title);
-        chooser.getExtensionFilters().add(new FileChooser.ExtensionFilter("CSV (*.csv)", "*.csv"));
-        return chooser;
+    private void generate() {
+        Dialogs.askPositiveInt(stage, "Сгенерировать", "Сколько случайных талонов добавить в очередь:",
+                DEFAULT_GENERATED, MAX_GENERATED).ifPresent(count ->
+                tasks.runCancellable(QueueTasks.generate(generator, heap.toList(), count), generated -> {
+                    heap.replaceWith(generated);
+                    refresh();
+                    tasks.setStatus("Добавлено талонов: " + count + ", всего: " + heap.size());
+                }));
+    }
+
+    private void showRace() {
+        tasks.run(QueueTasks.background("Потоки вставляют в кучи", RaceDemo::run),
+                report -> Dialogs.text(stage, "Демонстрация гонки", RaceDemo.describe(report)));
     }
 }
