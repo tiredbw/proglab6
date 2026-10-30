@@ -9,6 +9,7 @@ import org.junit.jupiter.params.provider.CsvSource;
 
 import java.io.IOException;
 import java.net.URISyntaxException;
+import java.nio.file.Files;
 import java.nio.file.Path;
 import java.util.ArrayList;
 import java.util.List;
@@ -103,6 +104,24 @@ class CsvLoaderTest {
 
         List<Ticket> loaded = loader.loadWithReport(file).tickets();
         assertEquals(original.toString(), loaded.toString());
+    }
+
+    @Test
+    void savedFileMatchesLab1Format(@TempDir Path dir) throws Exception {
+        Path fixture = resource("tickets_valid.csv");
+        Path saved = dir.resolve("saved.csv");
+
+        new CsvSaver().save(saved, loader.loadWithReport(fixture).tickets());
+
+        assertEquals(Files.readAllLines(fixture), Files.readAllLines(saved));
+    }
+
+    @Test
+    void headerWithBomIsSkipped(@TempDir Path dir) throws Exception {
+        Path file = dir.resolve("bom.csv");
+        Files.writeString(file, "\uFEFF" + CsvFormat.HEADER + "\n");
+
+        assertEquals(List.of(), loader.loadWithReport(file).errors());
     }
 
     @Test

@@ -1,6 +1,7 @@
 package serialization;
 
 import com.fasterxml.jackson.core.JsonProcessingException;
+import com.fasterxml.jackson.databind.DeserializationFeature;
 import com.fasterxml.jackson.databind.JsonNode;
 import com.fasterxml.jackson.databind.ObjectMapper;
 import com.fasterxml.jackson.databind.SerializationFeature;
@@ -19,9 +20,12 @@ public class JsonSerializer implements Serializer {
     private static final String VERSION_FIELD = "formatVersion";
     private static final String TICKETS_FIELD = "tickets";
 
+    // Чтение строгое: хвост после документа и дробная срочность считаются порчей файла
     private static final ObjectMapper MAPPER = new ObjectMapper()
             .registerModule(new JavaTimeModule())
-            .disable(SerializationFeature.WRITE_DATES_AS_TIMESTAMPS);
+            .disable(SerializationFeature.WRITE_DATES_AS_TIMESTAMPS)
+            .enable(DeserializationFeature.FAIL_ON_TRAILING_TOKENS)
+            .disable(DeserializationFeature.ACCEPT_FLOAT_AS_INT);
 
     private record QueueFile(int formatVersion, List<TicketDto> tickets) {
     }
@@ -52,7 +56,7 @@ public class JsonSerializer implements Serializer {
         // Сначала версия: в файле другой версии записи могут быть устроены иначе
         JsonNode version = root.path(VERSION_FIELD);
         if (!version.isInt()) {
-            throw corrupted("нет поля " + VERSION_FIELD);
+            throw corrupted("поле " + VERSION_FIELD + " отсутствует или не целое");
         }
         if (version.intValue() != VERSION) {
             throw new SerializationException(SerializationErrorCode.UNSUPPORTED_VERSION,

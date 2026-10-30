@@ -29,6 +29,8 @@ public final class TicketTableFactory {
         TableColumn<Ticket, V> column = new TableColumn<>(title);
         column.setCellValueFactory(data -> new ReadOnlyObjectWrapper<>(getter.apply(data.getValue())));
         column.setPrefWidth(width);
+        // Строки идут в порядке массива кучи. Сортировка 10^5 строк заняла бы FX-поток на полсекунды
+        column.setSortable(false);
         return column;
     }
 }

@@ -22,11 +22,17 @@ class TicketModelTest {
     }
 
     @Test
-    void regularAndHomeTicketsAreEditable() {
+    void regularTicketIsEditable() {
         Ticket regular = new RegularTicket("K-1", "Иванов", "101", 1, TIME);
+
+        assertTrue(regular instanceof Editable);
+    }
+
+    @Test
+    void homeTicketIsEditable() {
         Ticket home = new HomeVisitTicket("K-2", "Петрова", "На дому", 1, TIME, "ул. Ленина, 1");
 
-        assertTrue(regular instanceof Editable && home instanceof Editable);
+        assertTrue(home instanceof Editable);
     }
 
     @Test
@@ -34,6 +40,23 @@ class TicketModelTest {
         HomeVisitTicket ticket = new HomeVisitTicket("K-1", "Иванов", "101", 1, TIME, " ");
 
         assertEquals(1, ticket.validate().size());
+    }
+
+    @Test
+    void homeTicketRejectsSemicolonInAddress() {
+        HomeVisitTicket ticket = new HomeVisitTicket("K-1", "Иванов", "101", 1, TIME, "ул. Ленина; 1");
+
+        assertEquals(1, ticket.validate().size());
+    }
+
+    @Test
+    void copyFromCopiesAllCommonFields() {
+        RegularTicket target = new RegularTicket("K-1", "Иванов", "101", 1, TIME);
+        RegularTicket source = new RegularTicket("K-2", "Петрова", "102", 2, TIME.plusDays(1));
+
+        target.copyFrom(source);
+
+        assertEquals(source.toString(), target.toString());
     }
 
     @Test

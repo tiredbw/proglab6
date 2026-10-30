@@ -60,7 +60,9 @@ class JsonSerializerTest {
             "queue_no_urgency.json,     CORRUPTED_DATA",
             "queue_bad_urgency.json,    CORRUPTED_DATA",
             "queue_bad_date.json,       CORRUPTED_DATA",
-            "queue_null_record.json,    CORRUPTED_DATA"
+            "queue_null_record.json,    CORRUPTED_DATA",
+            "queue_float_urgency.json,  CORRUPTED_DATA",
+            "queue_trailing_garbage.json, CORRUPTED_DATA"
     })
     void brokenFileGivesErrorCode(String file, SerializationErrorCode expected) throws Exception {
         Path path = resource(file);

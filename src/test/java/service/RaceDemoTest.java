@@ -6,11 +6,12 @@ import org.junit.jupiter.api.Timeout;
 import structure.SynchronizedTicketHeap;
 import structure.TicketHeap;
 
+import java.lang.reflect.Method;
+import java.lang.reflect.Modifier;
 import java.util.Comparator;
 import java.util.concurrent.CountDownLatch;
 import java.util.concurrent.atomic.AtomicBoolean;
 
-import static org.junit.jupiter.api.Assertions.assertEquals;
 import static org.junit.jupiter.api.Assertions.assertFalse;
 import static org.junit.jupiter.api.Assertions.assertTrue;
 
@@ -23,19 +24,19 @@ class RaceDemoTest {
     @Timeout(30)
     void protectedHeapKeepsAllElements() throws InterruptedException {
         RaceDemo.Result result = RaceDemo.insertConcurrently(
-                new SynchronizedTicketHeap<>(Comparator.naturalOrder()), THREADS, INSERTS);
+                new SynchronizedTicketHeap<Integer>(Comparator.naturalOrder()), THREADS, INSERTS);
 
         assertTrue(result.isCorrect());
     }
 
     @Test
     @Timeout(30)
-    void unprotectedRunFinishesWithoutLosingControl() throws InterruptedException {
+    void unprotectedRunFinishesWithinBounds() throws InterruptedException {
         RaceDemo.Result result = RaceDemo.insertConcurrently(
-                new TicketHeap<>(Comparator.naturalOrder()), THREADS, INSERTS);
+                new TicketHeap<Integer>(Comparator.naturalOrder()), THREADS, INSERTS);
 
-        // Сам факт порчи зависит от планировщика, поэтому здесь проверяется только граница
-        assertTrue(result.actualSize() <= result.expected());
+        // Сам факт порчи зависит от планировщика, поэтому здесь проверяются только границы
+        assertTrue(result.actualSize() > 0 && result.actualSize() <= result.expected());
     }
 
     // Детерминированная гонка «проверил, затем действую»: первый поток решил поднять элемент
@@ -70,10 +71,27 @@ class RaceDemoTest {
     }
 
     @Test
-    void reportDescribesExpectedCount() throws InterruptedException {
-        RaceDemo.Report report = RaceDemo.run();
+    void reportShowsProtectedHeapAsCorrect() throws InterruptedException {
+        assertTrue(RaceDemo.run().safe().isCorrect());
+    }
 
-        assertEquals(RaceDemo.THREADS * RaceDemo.INSERTS_PER_THREAD, report.safe().expected());
+    @Test
+    void descriptionContainsActualSize() {
+        RaceDemo.Result unsafe = new RaceDemo.Result(100, 42, false, 3);
+        RaceDemo.Result safe = new RaceDemo.Result(100, 100, true, 0);
+
+        assertTrue(RaceDemo.describe(new RaceDemo.Report(unsafe, safe)).contains("В куче элементов: 42"));
+    }
+
+    @Test
+    void everyPublicHeapMethodIsSynchronized() throws NoSuchMethodException {
+        for (Method method : TicketHeap.class.getDeclaredMethods()) {
+            if (Modifier.isPublic(method.getModifiers())) {
+                Method override = SynchronizedTicketHeap.class
+                        .getDeclaredMethod(method.getName(), method.getParameterTypes());
+                assertTrue(Modifier.isSynchronized(override.getModifiers()), method.getName());
+            }
+        }
     }
 
     private static void await(CountDownLatch latch) {

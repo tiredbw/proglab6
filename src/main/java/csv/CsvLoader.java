@@ -15,6 +15,7 @@ import java.util.Objects;
 import java.util.function.BiConsumer;
 
 public class CsvLoader {
+    private static final char BOM = '\uFEFF';
 
     public LoadResult loadWithReport(Path file) throws IOException {
         return loadWithReport(file, (done, total) -> { });
@@ -89,7 +90,7 @@ public class CsvLoader {
 
     private String normalizeLine(String line) {
         String normalized = line == null ? "" : line.trim();
-        if (!normalized.isEmpty() && normalized.charAt(0) == '﻿') {
+        if (!normalized.isEmpty() && normalized.charAt(0) == BOM) {
             normalized = normalized.substring(1);
         }
         return normalized;

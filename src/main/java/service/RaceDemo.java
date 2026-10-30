@@ -26,9 +26,10 @@ public final class RaceDemo {
     }
 
     public static Report run() throws InterruptedException {
-        Result unsafe = insertConcurrently(new TicketHeap<>(Comparator.naturalOrder()), THREADS, INSERTS_PER_THREAD);
+        Result unsafe = insertConcurrently(
+                new TicketHeap<Integer>(Comparator.naturalOrder()), THREADS, INSERTS_PER_THREAD);
         Result safe = insertConcurrently(
-                new SynchronizedTicketHeap<>(Comparator.naturalOrder()), THREADS, INSERTS_PER_THREAD);
+                new SynchronizedTicketHeap<Integer>(Comparator.naturalOrder()), THREADS, INSERTS_PER_THREAD);
         return new Report(unsafe, safe);
     }
 

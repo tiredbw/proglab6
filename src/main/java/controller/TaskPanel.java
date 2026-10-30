@@ -12,6 +12,8 @@ import javafx.scene.layout.HBox;
 import javafx.scene.layout.Priority;
 import javafx.stage.Stage;
 
+import java.io.IOException;
+import java.nio.charset.CharacterCodingException;
 import java.util.function.Consumer;
 
 // Строка состояния: показывает прогресс фоновой операции и запускает её в отдельном потоке.
@@ -87,6 +89,12 @@ public class TaskPanel extends HBox {
     }
 
     private String describe(Throwable error) {
+        if (error instanceof CharacterCodingException) {
+            return "Файл должен быть в кодировке UTF-8";
+        }
+        if (error instanceof IOException) {
+            return "Ошибка работы с файлом: " + error;
+        }
         return error.getMessage() == null ? error.toString() : error.getMessage();
     }
 }

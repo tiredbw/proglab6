@@ -9,7 +9,7 @@ import java.util.function.Predicate;
 // Составное действие вроде find + delete не атомарно: между вызовами другой поток может изменить кучу.
 public class SynchronizedTicketHeap<T> extends TicketHeap<T> {
 
-    public SynchronizedTicketHeap(Comparator<? super T> comparator) {
+    public SynchronizedTicketHeap(Comparator<T> comparator) {
         super(comparator);
     }
 
@@ -29,7 +29,7 @@ public class SynchronizedTicketHeap<T> extends TicketHeap<T> {
     }
 
     @Override
-    public synchronized int find(Predicate<? super T> condition) {
+    public synchronized int find(Predicate<T> condition) {
         return super.find(condition);
     }
 
@@ -44,7 +44,7 @@ public class SynchronizedTicketHeap<T> extends TicketHeap<T> {
     }
 
     @Override
-    public synchronized void changePriority(int index, Consumer<? super T> change) {
+    public synchronized void changePriority(int index, Consumer<T> change) {
         super.changePriority(index, change);
     }
 
@@ -54,13 +54,8 @@ public class SynchronizedTicketHeap<T> extends TicketHeap<T> {
     }
 
     @Override
-    public synchronized void addAll(List<? extends T> newItems) {
+    public synchronized void addAll(List<T> newItems) {
         super.addAll(newItems);
-    }
-
-    @Override
-    public synchronized void clear() {
-        super.clear();
     }
 
     @Override

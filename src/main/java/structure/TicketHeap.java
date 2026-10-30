@@ -4,6 +4,7 @@ import java.util.ArrayList;
 import java.util.Arrays;
 import java.util.Comparator;
 import java.util.List;
+import java.util.Objects;
 import java.util.function.Consumer;
 import java.util.function.Predicate;
 
@@ -14,7 +15,7 @@ public class TicketHeap<T> {
     private static final int INITIAL_CAPACITY = 16;
     private static final int GROWTH_FACTOR = 2;
 
-    private final Comparator<? super T> comparator;
+    private final Comparator<T> comparator;
     private T[] items;
     private int size;
 
@@ -22,7 +23,7 @@ public class TicketHeap<T> {
     private int[] visited = new int[INITIAL_CAPACITY];
     private int visitedCount;
 
-    public TicketHeap(Comparator<? super T> comparator) {
+    public TicketHeap(Comparator<T> comparator) {
         this.comparator = comparator;
         this.items = newArray();
     }
@@ -33,6 +34,7 @@ public class TicketHeap<T> {
     }
 
     public void insert(T item) {
+        Objects.requireNonNull(item, "item");
         startVisit();
         ensureCapacity(size + 1);
         items[size] = item;
@@ -53,7 +55,7 @@ public class TicketHeap<T> {
     }
 
     // Возвращает индекс первого подходящего элемента или -1. Порядка по ключу поиска в куче нет, поэтому обход линейный
-    public int find(Predicate<? super T> condition) {
+    public int find(Predicate<T> condition) {
         startVisit();
         for (int i = 0; i < size; i++) {
             visit(i);
@@ -105,7 +107,7 @@ public class TicketHeap<T> {
     }
 
     // Единственный безопасный способ изменить поля, влияющие на порядок: после change инвариант восстанавливается
-    public void changePriority(int index, Consumer<? super T> change) {
+    public void changePriority(int index, Consumer<T> change) {
         checkIndex(index);
         startVisit();
         visit(index);
@@ -118,11 +120,15 @@ public class TicketHeap<T> {
         if (other == this) {
             throw new IllegalArgumentException("Нельзя слить очередь саму с собой");
         }
-        addAll(other.toList());
+        startVisit();
+        ensureCapacity(size + other.size);
+        System.arraycopy(other.items, 0, items, size, other.size);
+        size += other.size;
+        heapify();
     }
 
     // Добавляет сразу много элементов за O(n + m), что быстрее m отдельных вставок
-    public void addAll(List<? extends T> newItems) {
+    public void addAll(List<T> newItems) {
         startVisit();
         ensureCapacity(size + newItems.size());
         for (T item : newItems) {
@@ -132,15 +138,12 @@ public class TicketHeap<T> {
         heapify();
     }
 
-    public void clear() {
-        startVisit();
-        Arrays.fill(items, 0, size, null);
-        size = 0;
-    }
-
     // Забирает содержимое другой кучи за O(1): собрать её можно в фоне, а здесь только подменить массив.
     // Вторая куча остаётся пустой, иначе обе делили бы один массив
     public void replaceWith(TicketHeap<T> other) {
+        if (other == this) {
+            throw new IllegalArgumentException("Нельзя заменить очередь ей самой");
+        }
         items = other.items;
         size = other.size;
         visited = other.visited;

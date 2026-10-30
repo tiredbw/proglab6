@@ -2,9 +2,12 @@ package service;
 
 import model.Editable;
 import model.Ticket;
+import model.TicketType;
 import org.junit.jupiter.api.Test;
 
 import java.util.List;
+import java.util.Set;
+import java.util.stream.Collectors;
 
 import static org.junit.jupiter.api.Assertions.assertEquals;
 import static org.junit.jupiter.api.Assertions.assertTrue;
@@ -36,6 +39,22 @@ class TicketGeneratorTest {
                 : ticket.validateCommon()).isEmpty());
 
         assertTrue(allValid);
+    }
+
+    @Test
+    void cardNumbersContinueBetweenBatches() {
+        TicketGenerator generator = new TicketGenerator(SEED);
+        generator.generate(COUNT);
+
+        assertEquals("K-" + (COUNT + 1), generator.next().getCardNumber());
+    }
+
+    @Test
+    void onlyEditableTypesAreGenerated() {
+        Set<TicketType> types = new TicketGenerator(SEED).generate(COUNT).stream()
+                .map(Ticket::type).collect(Collectors.toSet());
+
+        assertEquals(Set.of(TicketType.TICKET, TicketType.HOME), types);
     }
 
     @Test

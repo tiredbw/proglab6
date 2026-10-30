@@ -40,23 +40,29 @@ public final class QueueTasks {
         return heap;
     }
 
+    public static TicketHeap<Ticket> merged(List<Ticket> current, List<Ticket> added) {
+        TicketHeap<Ticket> queue = heapOf(current);
+        queue.merge(heapOf(added));
+        return queue;
+    }
+
     // current нужен снимком, сделанным в FX-потоке до старта задачи
-    public static Task<TicketHeap<Ticket>> generate(List<Ticket> current, int count) {
+    public static Task<TicketHeap<Ticket>> generate(TicketGenerator generator, List<Ticket> current, int count) {
         return new Task<>() {
             @Override
             protected TicketHeap<Ticket> call() {
                 updateMessage("Генерация " + count + " талонов");
-                TicketGenerator generator = new TicketGenerator();
                 List<Ticket> tickets = new ArrayList<>(count);
-                for (int i = 0; i < count && !isCancelled(); i++) {
+                for (int i = 0; i < count; i++) {
+                    if (isCancelled()) {
+                        return null;
+                    }
                     tickets.add(generator.next());
                     if (i % PROGRESS_STEP == 0) {
                         updateProgress(i, count);
                     }
                 }
-                TicketHeap<Ticket> queue = heapOf(current);
-                queue.addAll(tickets);
-                return queue;
+                return merged(current, tickets);
             }
         };
     }
@@ -74,9 +80,7 @@ public final class QueueTasks {
                     updateProgress(done, total);
                 });
 
-                TicketHeap<Ticket> queue = heapOf(current);
-                queue.merge(heapOf(result.tickets()));
-                return new LoadedQueue(queue, result.tickets().size(), result.errors());
+                return new LoadedQueue(merged(current, result.tickets()), result.tickets().size(), result.errors());
             }
         };
     }

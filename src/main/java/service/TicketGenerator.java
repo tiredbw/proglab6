@@ -1,6 +1,5 @@
 package service;
 
-import model.ClosedTicket;
 import model.HomeVisitTicket;
 import model.RegularTicket;
 import model.Ticket;
@@ -10,6 +9,8 @@ import java.util.ArrayList;
 import java.util.List;
 import java.util.Random;
 
+// Создаёт только редактируемые типы: по заданию закрытый талон появляется лишь из файла.
+// Номера карт идут подряд в пределах одного генератора, поэтому для всего сеанса нужен один экземпляр.
 public class TicketGenerator {
     private static final String[] LAST_NAMES = {
             "Иванов", "Петров", "Сидоров", "Козлов", "Морозов", "Волков", "Лебедев", "Соколов"};
@@ -25,8 +26,8 @@ public class TicketGenerator {
     private static final int MINUTES_IN_WEEK = 7 * 24 * 60;
     private static final int URGENCY_COUNT = Ticket.MAX_URGENCY - Ticket.MIN_URGENCY + 1;
     private static final int HOME_PERCENT = 20;
-    private static final int CLOSED_PERCENT = 10;
     private static final int PERCENT_TOTAL = 100;
+    private static final String CARD_PREFIX = "K-";
 
     private static final LocalDateTime BASE_TIME = LocalDateTime.of(2026, 1, 1, 8, 0);
 
@@ -46,20 +47,16 @@ public class TicketGenerator {
     }
 
     public Ticket next() {
-        String card = "K-" + nextCard;
+        String card = CARD_PREFIX + nextCard;
         nextCard++;
         String name = pick(LAST_NAMES) + " " + pick(FIRST_NAMES);
         String room = String.valueOf(MIN_ROOM + random.nextInt(ROOM_COUNT));
         int urgency = Ticket.MIN_URGENCY + random.nextInt(URGENCY_COUNT);
         LocalDateTime takenAt = BASE_TIME.plusMinutes(random.nextInt(MINUTES_IN_WEEK));
 
-        int kind = random.nextInt(PERCENT_TOTAL);
-        if (kind < HOME_PERCENT) {
+        if (random.nextInt(PERCENT_TOTAL) < HOME_PERCENT) {
             String address = pick(STREETS) + ", " + (MIN_HOUSE + random.nextInt(HOUSE_COUNT));
             return new HomeVisitTicket(card, name, room, urgency, takenAt, address);
-        }
-        if (kind < HOME_PERCENT + CLOSED_PERCENT) {
-            return new ClosedTicket(card, name, room, urgency, takenAt);
         }
         return new RegularTicket(card, name, room, urgency, takenAt);
     }

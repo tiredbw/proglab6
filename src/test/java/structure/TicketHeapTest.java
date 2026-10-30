@@ -7,6 +7,7 @@ import java.util.Arrays;
 import java.util.Comparator;
 import java.util.List;
 import java.util.Random;
+import java.util.stream.IntStream;
 
 import static org.junit.jupiter.api.Assertions.assertArrayEquals;
 import static org.junit.jupiter.api.Assertions.assertEquals;
@@ -19,7 +20,7 @@ class TicketHeapTest {
     private static final long SEED = 42;
 
     private TicketHeap<Integer> heapOf(Integer... values) {
-        TicketHeap<Integer> heap = new TicketHeap<>(Comparator.naturalOrder());
+        TicketHeap<Integer> heap = new TicketHeap<Integer>(Comparator.naturalOrder());
         for (int value : values) {
             heap.insert(value);
         }
@@ -223,6 +224,15 @@ class TicketHeapTest {
     }
 
     @Test
+    void isValidHeapChecksDeepNodes() {
+        TicketHeap<Box> heap = boxHeapOf(1, 2, 3, 4, 5, 6, 7);
+
+        heap.get(6).value = 0;
+
+        assertFalse(heap.isValidHeap());
+    }
+
+    @Test
     void mergeKeepsInvariant() {
         TicketHeap<Integer> heap = heapOf(9, 7, 5, 3);
 
@@ -275,12 +285,39 @@ class TicketHeapTest {
     }
 
     @Test
-    void clearRemovesAllElements() {
-        TicketHeap<Integer> heap = heapOf(1, 2, 3);
+    void addAllGrowsPastInitialCapacity() {
+        TicketHeap<Integer> heap = heapOf();
 
-        heap.clear();
+        heap.addAll(IntStream.range(0, 100).boxed().toList());
 
-        assertTrue(heap.isEmpty());
+        assertEquals(100, heap.size());
+    }
+
+    @Test
+    void mergeGrowsPastInitialCapacity() {
+        TicketHeap<Integer> heap = heapOf();
+        TicketHeap<Integer> other = heapOf();
+        other.addAll(IntStream.range(0, 100).boxed().toList());
+
+        heap.merge(other);
+
+        assertTrue(heap.isValidHeap());
+    }
+
+    @Test
+    void replaceWithItselfIsForbidden() {
+        TicketHeap<Integer> heap = heapOf(1, 2);
+
+        assertThrows(IllegalArgumentException.class, () -> heap.replaceWith(heap));
+    }
+
+    @Test
+    void insertOfNullLeavesHeapUnchanged() {
+        TicketHeap<Integer> heap = heapOf(1, 2);
+
+        assertThrows(NullPointerException.class, () -> heap.insert(null));
+
+        assertEquals(2, heap.size());
     }
 
     @Test
@@ -310,6 +347,24 @@ class TicketHeapTest {
         heap.insert(0);
 
         assertArrayEquals(new int[]{4, 1, 0}, heap.lastVisited());
+    }
+
+    @Test
+    void deleteRecordsRemovedIndexFirst() {
+        TicketHeap<Integer> heap = heapOf(1, 2, 3, 4, 5, 6, 7);
+
+        heap.delete(1);
+
+        assertEquals(1, heap.lastVisited()[0]);
+    }
+
+    @Test
+    void changePriorityRecordsMovementPath() {
+        TicketHeap<Box> heap = boxHeapOf(1, 2, 3, 4, 5, 6, 7);
+
+        heap.changePriority(6, box -> box.value = 0);
+
+        assertArrayEquals(new int[]{6, 6, 2, 0}, heap.lastVisited());
     }
 
     @Test

@@ -12,6 +12,7 @@ import java.util.List;
 import java.util.Locale;
 import java.util.PriorityQueue;
 import java.util.Random;
+import java.util.function.IntFunction;
 import java.util.function.Supplier;
 
 // Замеры TicketHeap и PriorityQueue. Лежит в src/test: по заданию аналога из java.util в основном коде быть не должно.
@@ -28,10 +29,6 @@ public final class HeapBenchmark {
 
     // Результат складывается сюда, чтобы компилятор не выбросил вычисления как ненужные
     private static long sink;
-
-    private interface Operation {
-        void run();
-    }
 
     private record Row(String name, double[] ownMillis, double[] javaMillis) {
     }
@@ -64,26 +61,25 @@ public final class HeapBenchmark {
         System.out.println("Контрольная сумма: " + sink);
     }
 
-    private static Row measure(String name, java.util.function.IntFunction<Operation> own,
-                               java.util.function.IntFunction<Operation> java) {
+    private static Row measure(String name, IntFunction<Runnable> own, IntFunction<Runnable> javaQueue) {
         double[] ownMillis = new double[SIZES.length];
         double[] javaMillis = new double[SIZES.length];
         for (int i = 0; i < SIZES.length; i++) {
             int size = SIZES[i];
             ownMillis[i] = medianMillis(() -> own.apply(size));
-            javaMillis[i] = medianMillis(() -> java.apply(size));
+            javaMillis[i] = medianMillis(() -> javaQueue.apply(size));
         }
         return new Row(name, ownMillis, javaMillis);
     }
 
     // Подготовка данных идёт вне замера: Supplier собирает операцию, а время берётся только у её запуска
-    private static double medianMillis(Supplier<Operation> prepare) {
+    private static double medianMillis(Supplier<Runnable> prepare) {
         for (int i = 0; i < WARMUP_RUNS; i++) {
             prepare.get().run();
         }
         double[] times = new double[MEASURED_RUNS];
         for (int i = 0; i < MEASURED_RUNS; i++) {
-            Operation operation = prepare.get();
+            Runnable operation = prepare.get();
             long start = System.nanoTime();
             operation.run();
             times[i] = (System.nanoTime() - start) / NANOS_IN_MILLI;
@@ -126,7 +122,7 @@ public final class HeapBenchmark {
         return result;
     }
 
-    private static Operation ownInsert(int size) {
+    private static Runnable ownInsert(int size) {
         List<Ticket> tickets = tickets(size);
         return () -> {
             TicketHeap<Ticket> heap = new TicketHeap<>(Ticket.PRIORITY);
@@ -137,7 +133,7 @@ public final class HeapBenchmark {
         };
     }
 
-    private static Operation javaInsert(int size) {
+    private static Runnable javaInsert(int size) {
         List<Ticket> tickets = tickets(size);
         return () -> {
             PriorityQueue<Ticket> queue = new PriorityQueue<>(Ticket.PRIORITY);
@@ -148,7 +144,7 @@ public final class HeapBenchmark {
         };
     }
 
-    private static Operation ownExtract(int size) {
+    private static Runnable ownExtract(int size) {
         TicketHeap<Ticket> heap = ownHeap(tickets(size));
         return () -> {
             while (!heap.isEmpty()) {
@@ -157,7 +153,7 @@ public final class HeapBenchmark {
         };
     }
 
-    private static Operation javaExtract(int size) {
+    private static Runnable javaExtract(int size) {
         PriorityQueue<Ticket> queue = javaQueue(tickets(size));
         return () -> {
             while (!queue.isEmpty()) {
@@ -166,7 +162,7 @@ public final class HeapBenchmark {
         };
     }
 
-    private static Operation ownFind(int size) {
+    private static Runnable ownFind(int size) {
         List<Ticket> tickets = tickets(size);
         TicketHeap<Ticket> heap = ownHeap(tickets);
         List<Ticket> targets = sample(tickets);
@@ -178,7 +174,7 @@ public final class HeapBenchmark {
         };
     }
 
-    private static Operation javaFind(int size) {
+    private static Runnable javaFind(int size) {
         List<Ticket> tickets = tickets(size);
         PriorityQueue<Ticket> queue = javaQueue(tickets);
         List<Ticket> targets = sample(tickets);
@@ -195,7 +191,7 @@ public final class HeapBenchmark {
         };
     }
 
-    private static Operation ownDelete(int size) {
+    private static Runnable ownDelete(int size) {
         List<Ticket> tickets = tickets(size);
         TicketHeap<Ticket> heap = ownHeap(tickets);
         List<Ticket> targets = sample(tickets);
@@ -207,7 +203,7 @@ public final class HeapBenchmark {
         };
     }
 
-    private static Operation javaDelete(int size) {
+    private static Runnable javaDelete(int size) {
         List<Ticket> tickets = tickets(size);
         PriorityQueue<Ticket> queue = javaQueue(tickets);
         List<Ticket> targets = sample(tickets);
@@ -219,7 +215,7 @@ public final class HeapBenchmark {
         };
     }
 
-    private static Operation ownTopK(int size) {
+    private static Runnable ownTopK(int size) {
         TicketHeap<Ticket> heap = ownHeap(tickets(size));
         return () -> {
             for (int i = 0; i < TOP_K_REPEATS; i++) {
@@ -229,7 +225,7 @@ public final class HeapBenchmark {
     }
 
     // У PriorityQueue нет своего topK: снимаем копию и извлекаем k раз, исходная очередь не меняется
-    private static Operation javaTopK(int size) {
+    private static Runnable javaTopK(int size) {
         PriorityQueue<Ticket> queue = javaQueue(tickets(size));
         return () -> {
             for (int i = 0; i < TOP_K_REPEATS; i++) {
@@ -241,7 +237,7 @@ public final class HeapBenchmark {
         };
     }
 
-    private static Operation ownChange(int size) {
+    private static Runnable ownChange(int size) {
         List<Ticket> tickets = tickets(size);
         TicketHeap<Ticket> heap = ownHeap(tickets);
         List<RegularTicket> targets = sampleEditable(tickets);
@@ -255,7 +251,7 @@ public final class HeapBenchmark {
     }
 
     // У PriorityQueue нет изменения приоритета: удаляем элемент, меняем его и вставляем заново
-    private static Operation javaChange(int size) {
+    private static Runnable javaChange(int size) {
         List<Ticket> tickets = tickets(size);
         PriorityQueue<Ticket> queue = javaQueue(tickets);
         List<RegularTicket> targets = sampleEditable(tickets);
@@ -270,7 +266,7 @@ public final class HeapBenchmark {
         };
     }
 
-    private static Operation ownMerge(int size) {
+    private static Runnable ownMerge(int size) {
         List<Ticket> tickets = tickets(size);
         TicketHeap<Ticket> first = ownHeap(tickets);
         TicketHeap<Ticket> second = ownHeap(tickets);
@@ -280,7 +276,7 @@ public final class HeapBenchmark {
         };
     }
 
-    private static Operation javaMerge(int size) {
+    private static Runnable javaMerge(int size) {
         List<Ticket> tickets = tickets(size);
         PriorityQueue<Ticket> first = javaQueue(tickets);
         PriorityQueue<Ticket> second = javaQueue(tickets);

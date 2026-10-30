@@ -157,7 +157,11 @@ public class HeapCanvas extends Pane {
     }
 
     private static int levelOf(int index) {
-        return Integer.SIZE - 1 - Integer.numberOfLeadingZeros(index + 1);
+        int level = 0;
+        while (index >= (1 << (level + 1)) - 1) {
+            level++;
+        }
+        return level;
     }
 
     private static double nodeX(int index, double width) {

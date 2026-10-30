@@ -17,12 +17,15 @@ import model.Editable;
 import model.RegularTicket;
 import model.Ticket;
 import service.RaceDemo;
+import service.TicketGenerator;
 import structure.TicketHeap;
 
 import java.util.List;
-import java.util.function.Consumer;
 
 public class MainController {
+    public static final String TITLE = "Электронная очередь поликлиники";
+
+    private static final String TITLE_STYLE = "-fx-font-size: 20px; -fx-font-weight: bold;";
     private static final double BUTTON_MIN_WIDTH = 135;
     private static final double BUTTON_GAP = 10;
     private static final double SECTION_GAP = 12;
@@ -31,10 +34,11 @@ public class MainController {
     private static final int DEFAULT_GENERATED = 1000;
     private static final int MAX_GENERATED = 5_000_000;
     private static final int DEFAULT_TOP_K = 5;
-    private static final int MAX_TOP_K = 10_000;
+    private static final int MAX_TOP_K = 1000;
 
     private final Stage stage;
     private final TicketHeap<Ticket> heap = new TicketHeap<>(Ticket.PRIORITY);
+    private final TicketGenerator generator = new TicketGenerator();
     // Копия содержимого кучи для показа в таблице, данные хранятся только в heap
     private final ObservableList<Ticket> tableItems = FXCollections.observableArrayList();
     private final TableView<Ticket> table = new TableView<>(tableItems);
@@ -87,8 +91,8 @@ public class MainController {
         content.setOrientation(Orientation.VERTICAL);
         content.setDividerPositions(TABLE_SHARE);
 
-        Label title = new Label("Электронная очередь поликлиники");
-        title.setStyle("-fx-font-size: 20px; -fx-font-weight: bold;");
+        Label title = new Label(TITLE);
+        title.setStyle(TITLE_STYLE);
 
         VBox root = new VBox(SECTION_GAP, title, content, toolbar, tasks);
         root.setPadding(new Insets(ROOT_PADDING));
@@ -112,16 +116,11 @@ public class MainController {
 
     private void refresh() {
         tableItems.setAll(heap.toList());
-        table.sort();
         heapCanvas.redraw();
     }
 
     private Ticket selectedTicket() {
         return table.getSelectionModel().getSelectedItem();
-    }
-
-    private int indexOf(Ticket ticket) {
-        return heap.find(item -> item == ticket);
     }
 
     private void addTicket() {
@@ -135,33 +134,33 @@ public class MainController {
     private void editTicket() {
         if (selectedTicket() instanceof RegularTicket ticket) {
             TicketDialog.showForEdit(stage, ticket).ifPresent(updated ->
-                    updateInHeap(ticket, item -> item.copyFrom(updated)));
+                    updateInHeap(ticket, () -> ticket.copyFrom(updated)));
         }
     }
 
     private void changePriority() {
         if (selectedTicket() instanceof RegularTicket ticket) {
             TicketDialog.showForPriority(stage, ticket).ifPresent(priority ->
-                    updateInHeap(ticket, item -> {
-                        item.setUrgency(priority.urgency());
-                        item.setTakenAt(priority.takenAt());
+                    updateInHeap(ticket, () -> {
+                        ticket.setUrgency(priority.urgency());
+                        ticket.setTakenAt(priority.takenAt());
                     }));
         }
     }
 
     // Единственное место, где меняется талон из очереди: прямой вызов сеттера сломал бы инвариант кучи
-    private void updateInHeap(RegularTicket ticket, Consumer<RegularTicket> change) {
-        heap.changePriority(indexOf(ticket), item -> change.accept(ticket));
+    private void updateInHeap(Ticket ticket, Runnable change) {
+        heap.changePriority(table.getSelectionModel().getSelectedIndex(), item -> change.run());
         refresh();
         table.getSelectionModel().select(ticket);
     }
 
     private void deleteTicket() {
-        Ticket ticket = selectedTicket();
-        if (ticket != null) {
-            heap.delete(indexOf(ticket));
+        int index = table.getSelectionModel().getSelectedIndex();
+        if (index >= 0) {
+            Ticket removed = heap.delete(index);
             refresh();
-            tasks.setStatus("Удалён: " + ticket);
+            tasks.setStatus("Удалён: " + removed);
         }
     }
 
@@ -207,7 +206,7 @@ public class MainController {
     private void generate() {
         Dialogs.askPositiveInt(stage, "Сгенерировать", "Сколько случайных талонов добавить в очередь:",
                 DEFAULT_GENERATED, MAX_GENERATED).ifPresent(count ->
-                tasks.runCancellable(QueueTasks.generate(heap.toList(), count), generated -> {
+                tasks.runCancellable(QueueTasks.generate(generator, heap.toList(), count), generated -> {
                     heap.replaceWith(generated);
                     refresh();
                     tasks.setStatus("Добавлено талонов: " + count + ", всего: " + heap.size());

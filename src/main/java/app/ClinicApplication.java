@@ -16,7 +16,7 @@ public class ClinicApplication extends Application {
         MainController controller = new MainController(stage);
         Scene scene = new Scene(controller.createView(), WINDOW_WIDTH, WINDOW_HEIGHT);
 
-        stage.setTitle("Электронная очередь поликлиники");
+        stage.setTitle(MainController.TITLE);
         stage.setMinWidth(MIN_WIDTH);
         stage.setMinHeight(MIN_HEIGHT);
         stage.setScene(scene);
