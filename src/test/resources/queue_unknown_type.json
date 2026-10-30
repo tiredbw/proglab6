@@ -1,0 +1,14 @@
+{
+  "formatVersion": 1,
+  "tickets": [
+    {
+      "type": "PATIENT",
+      "cardNumber": "K-1001",
+      "fullName": "Иванов Иван Иванович",
+      "room": "101",
+      "urgency": 2,
+      "takenAt": "2026-09-24T10:30:00",
+      "address": ""
+    }
+  ]
+}

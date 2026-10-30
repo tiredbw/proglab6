@@ -68,7 +68,9 @@ public class MainController {
                 prepared(editButton, this::editTicket),
                 button("Загрузить CSV", files::loadCsv),
                 button("Сохранить CSV", files::saveCsv),
-                button("Слить с CSV-файлом", files::mergeCsv));
+                button("Слить с CSV-файлом", files::mergeCsv),
+                button("Экспорт", files::exportQueue),
+                button("Импорт", files::importQueue));
         FlowPane queueButtons = buttonRow(
                 button("Извлечь минимум", this::extractMin),
                 button("Найти", this::findTicket),
