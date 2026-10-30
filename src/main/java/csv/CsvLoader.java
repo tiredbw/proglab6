@@ -1,11 +1,8 @@
 package csv;
 
-import model.ClosedTicket;
-import model.Editable;
-import model.HomeVisitTicket;
 import model.Ticket;
+import model.TicketType;
 
-import java.io.BufferedReader;
 import java.io.IOException;
 import java.nio.charset.StandardCharsets;
 import java.nio.file.Files;
@@ -15,43 +12,35 @@ import java.time.format.DateTimeParseException;
 import java.util.ArrayList;
 import java.util.List;
 import java.util.Objects;
+import java.util.function.BiConsumer;
 
 public class CsvLoader {
 
-    private final ArrayList<String> lastErrors = new ArrayList<>();
-
-    public ArrayList<Ticket> load(Path file) throws IOException {
-        return loadWithReport(file).tickets();
+    public LoadResult loadWithReport(Path file) throws IOException {
+        return loadWithReport(file, (done, total) -> { });
     }
 
-    public LoadResult loadWithReport(Path file) throws IOException {
-        ArrayList<Ticket> tickets = new ArrayList<>();
-        ArrayList<String> errors = new ArrayList<>();
+    // onProgress получает (обработано строк, всего строк) и может прервать загрузку исключением
+    public LoadResult loadWithReport(Path file, BiConsumer<Integer, Integer> onProgress) throws IOException {
+        List<String> lines = Files.readAllLines(file, StandardCharsets.UTF_8);
+        List<Ticket> tickets = new ArrayList<>();
+        List<String> errors = new ArrayList<>();
 
-        try (BufferedReader reader = Files.newBufferedReader(file, StandardCharsets.UTF_8)) {
-            String line;
-            int lineNumber = 0;
-            while ((line = reader.readLine()) != null) {
-                lineNumber++;
-                if (lineNumber == 1 && isHeader(line)) {
-                    continue;
-                }
-                if (line.isBlank()) {
-                    continue;
-                }
-                try {
-                    tickets.add(parseLine(line));
-                } catch (CsvLoadException e) {
-                    errors.add("Строка " + lineNumber + " [" + e.getCode() + "]: " + e.getMessage());
-                } catch (RuntimeException e) {
-                    errors.add("Строка " + lineNumber + " [" + CsvErrorCode.UNEXPECTED_ERROR
-                            + "]: Непредвиденная ошибка: " + e.getMessage());
-                }
+        for (int i = 0; i < lines.size(); i++) {
+            onProgress.accept(i, lines.size());
+            String line = lines.get(i);
+            int lineNumber = i + 1;
+            if ((lineNumber == 1 && isHeader(line)) || line.isBlank()) {
+                continue;
+            }
+            try {
+                tickets.add(parseLine(line));
+            } catch (CsvLoadException e) {
+                errors.add("Строка " + lineNumber + " [" + e.getCode() + "]: " + e.getMessage());
             }
         }
 
-        lastErrors.clear();
-        lastErrors.addAll(errors);
+        onProgress.accept(lines.size(), lines.size());
         return new LoadResult(tickets, errors);
     }
 
@@ -63,7 +52,7 @@ public class CsvLoader {
                     "Ожидалось " + CsvFormat.COLUMN_COUNT + " колонок, получено " + parts.length);
         }
 
-        String type = parts[0].trim();
+        String typeName = parts[0].trim();
         String cardNumber = parts[1].trim();
         String fullName = parts[2].trim();
         String room = parts[3].trim();
@@ -84,23 +73,14 @@ public class CsvLoader {
                     "Неверный формат даты/времени, ожидается ISO-8601");
         }
 
-        Ticket ticket = switch (type) {
-            case Ticket.CSV_TYPE -> new Ticket(cardNumber, fullName, room, urgency, takenAt);
-            case HomeVisitTicket.CSV_TYPE -> new HomeVisitTicket(cardNumber, fullName, room, urgency, takenAt, address);
-            case ClosedTicket.CSV_TYPE -> new ClosedTicket(cardNumber, fullName, room, urgency, takenAt);
-            default -> throw new CsvLoadException(CsvErrorCode.UNKNOWN_TYPE,
-                    "Неизвестный тип талона: " + type);
-        };
+        TicketType type = TicketType.parse(typeName).orElseThrow(() ->
+                new CsvLoadException(CsvErrorCode.UNKNOWN_TYPE, "Неизвестный тип талона: " + typeName));
 
-        List<String> validationErrors = ticket instanceof Editable editable
-                ? editable.validate()
-                : ticket.validateCommon();
-
-        if (!validationErrors.isEmpty()) {
-            throw new CsvLoadException(CsvErrorCode.INVALID_DATA, String.join("; ", validationErrors));
+        try {
+            return type.create(cardNumber, fullName, room, urgency, takenAt, address);
+        } catch (IllegalArgumentException e) {
+            throw new CsvLoadException(CsvErrorCode.INVALID_DATA, e.getMessage());
         }
-
-        return ticket;
     }
 
     private boolean isHeader(String line) {
@@ -109,16 +89,12 @@ public class CsvLoader {
 
     private String normalizeLine(String line) {
         String normalized = line == null ? "" : line.trim();
-        if (!normalized.isEmpty() && normalized.charAt(0) == '\uFEFF') {
+        if (!normalized.isEmpty() && normalized.charAt(0) == '﻿') {
             normalized = normalized.substring(1);
         }
         return normalized;
     }
 
-    public List<String> getErrors() {
-        return new ArrayList<>(lastErrors);
-    }
-
-    public record LoadResult(ArrayList<Ticket> tickets, ArrayList<String> errors) {
+    public record LoadResult(List<Ticket> tickets, List<String> errors) {
     }
 }

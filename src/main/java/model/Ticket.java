@@ -2,18 +2,24 @@ package model;
 
 import java.time.LocalDateTime;
 import java.util.ArrayList;
+import java.util.Comparator;
 import java.util.List;
 
-public class Ticket implements Editable {
-    public static final String CSV_TYPE = "TICKET";
+public abstract class Ticket {
+    public static final int MIN_URGENCY = 0;
+    public static final int MAX_URGENCY = 3;
 
-    private String cardNumber;
-    private String fullName;
-    private String room;
-    private int urgency;
-    private LocalDateTime takenAt;
+    // Порядок в очереди: сначала меньшая срочность, при равенстве раньше взятый талон
+    public static final Comparator<Ticket> PRIORITY =
+            Comparator.comparingInt(Ticket::getUrgency).thenComparing(Ticket::getTakenAt);
 
-    public Ticket(String cardNumber, String fullName, String room, int urgency, LocalDateTime takenAt) {
+    protected String cardNumber;
+    protected String fullName;
+    protected String room;
+    protected int urgency;
+    protected LocalDateTime takenAt;
+
+    protected Ticket(String cardNumber, String fullName, String room, int urgency, LocalDateTime takenAt) {
         this.cardNumber = cardNumber;
         this.fullName = fullName;
         this.room = room;
@@ -21,58 +27,39 @@ public class Ticket implements Editable {
         this.takenAt = takenAt;
     }
 
+    public abstract TicketType type();
+
     public String getCardNumber() {
         return cardNumber;
-    }
-
-    public void setCardNumber(String cardNumber) {
-        this.cardNumber = cardNumber;
     }
 
     public String getFullName() {
         return fullName;
     }
 
-    public void setFullName(String fullName) {
-        this.fullName = fullName;
-    }
-
     public String getRoom() {
         return room;
-    }
-
-    public void setRoom(String room) {
-        this.room = room;
     }
 
     public int getUrgency() {
         return urgency;
     }
 
-    public void setUrgency(int urgency) {
-        this.urgency = urgency;
-    }
-
     public LocalDateTime getTakenAt() {
         return takenAt;
     }
 
-    public void setTakenAt(LocalDateTime takenAt) {
-        this.takenAt = takenAt;
-    }
-
-    @Override
-    public List<String> validate() {
-        return validateCommon();
+    public String getAddress() {
+        return "";
     }
 
     public List<String> validateCommon() {
         List<String> errors = new ArrayList<>();
-        validateRequired("Номер карты не может быть пустым", cardNumber, errors);
-        validateRequired("ФИО не может быть пустым", fullName, errors);
-        validateRequired("Кабинет не может быть пустым", room, errors);
-        if (urgency < 0 || urgency > 3) {
-            errors.add("Срочность должна быть от 0 до 3");
+        validateRequired("Номер карты", cardNumber, errors);
+        validateRequired("ФИО", fullName, errors);
+        validateRequired("Кабинет", room, errors);
+        if (urgency < MIN_URGENCY || urgency > MAX_URGENCY) {
+            errors.add("Срочность должна быть от " + MIN_URGENCY + " до " + MAX_URGENCY);
         }
         if (takenAt == null) {
             errors.add("Время взятия не указано");
@@ -80,13 +67,13 @@ public class Ticket implements Editable {
         return errors;
     }
 
-    private void validateRequired(String message, String value, List<String> errors) {
+    private void validateRequired(String field, String value, List<String> errors) {
         if (value == null || value.isBlank()) {
-            errors.add(message);
+            errors.add(field + " не может быть пустым");
             return;
         }
         if (value.contains(";")) {
-            errors.add(message + " не может содержать ';'");
+            errors.add(field + " не может содержать ';'");
         }
     }
 

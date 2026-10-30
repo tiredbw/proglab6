@@ -4,8 +4,7 @@ import java.time.LocalDateTime;
 import java.util.ArrayList;
 import java.util.List;
 
-public class HomeVisitTicket extends Ticket implements Editable {
-    public static final String CSV_TYPE = "HOME";
+public final class HomeVisitTicket extends RegularTicket {
 
     private String address;
 
@@ -15,12 +14,26 @@ public class HomeVisitTicket extends Ticket implements Editable {
         this.address = address;
     }
 
+    @Override
+    public TicketType type() {
+        return TicketType.HOME;
+    }
+
+    @Override
     public String getAddress() {
         return address;
     }
 
     public void setAddress(String address) {
         this.address = address;
+    }
+
+    @Override
+    public void copyFrom(RegularTicket source) {
+        super.copyFrom(source);
+        if (source instanceof HomeVisitTicket home) {
+            address = home.address;
+        }
     }
 
     @Override

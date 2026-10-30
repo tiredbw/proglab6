@@ -15,14 +15,12 @@ import javafx.scene.layout.Priority;
 import javafx.scene.layout.VBox;
 import javafx.stage.FileChooser;
 import javafx.stage.Stage;
-import model.ClosedTicket;
 import model.Editable;
-import model.HomeVisitTicket;
+import model.RegularTicket;
 import model.Ticket;
 
 import java.io.File;
 import java.io.IOException;
-import java.util.ArrayList;
 
 public class MainController {
 
@@ -49,9 +47,7 @@ public class MainController {
 
         editButton.setDisable(true);
         table.getSelectionModel().selectedItemProperty().addListener((observable, oldValue, selectedTicket) ->
-                editButton.setDisable(selectedTicket == null
-                        || !(selectedTicket instanceof Editable)
-                        || selectedTicket instanceof ClosedTicket));
+                editButton.setDisable(!(selectedTicket instanceof Editable)));
 
         addButton.setOnAction(event -> addTicket());
         editButton.setOnAction(event -> editTicket());
@@ -76,22 +72,12 @@ public class MainController {
     }
 
     private void editTicket() {
-        Ticket selectedTicket = table.getSelectionModel().getSelectedItem();
-        if (selectedTicket == null || !(selectedTicket instanceof Editable) || selectedTicket instanceof ClosedTicket) {
+        if (!(table.getSelectionModel().getSelectedItem() instanceof RegularTicket selectedTicket)) {
             return;
         }
 
         TicketDialog.showForEdit(stage, selectedTicket).ifPresent(updated -> {
-            selectedTicket.setCardNumber(updated.getCardNumber());
-            selectedTicket.setFullName(updated.getFullName());
-            selectedTicket.setRoom(updated.getRoom());
-            selectedTicket.setUrgency(updated.getUrgency());
-            selectedTicket.setTakenAt(updated.getTakenAt());
-
-            if (selectedTicket instanceof HomeVisitTicket homeTicket && updated instanceof HomeVisitTicket updatedHome) {
-                homeTicket.setAddress(updatedHome.getAddress());
-            }
-
+            selectedTicket.copyFrom(updated);
             table.refresh();
         });
     }
@@ -106,8 +92,7 @@ public class MainController {
         CsvLoader loader = new CsvLoader();
         try {
             CsvLoader.LoadResult result = loader.loadWithReport(file.toPath());
-            ArrayList<Ticket> loadedTickets = result.tickets();
-            tableItems.setAll(loadedTickets);
+            tableItems.setAll(result.tickets());
 
             if (!result.errors().isEmpty()) {
                 Dialogs.warning(stage, "Пропущены битые строки:\n" + String.join("\n", result.errors()));

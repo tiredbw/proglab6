@@ -9,6 +9,7 @@ import javafx.scene.control.TextField;
 import javafx.scene.layout.GridPane;
 import javafx.stage.Stage;
 import model.HomeVisitTicket;
+import model.RegularTicket;
 import model.Ticket;
 
 import java.time.LocalDateTime;
@@ -18,30 +19,38 @@ import java.util.Optional;
 
 public final class TicketDialog {
 
+    private static final String REGULAR_TYPE = "Обычный талон";
+    private static final String HOME_TYPE = "Вызов на дом";
+    private static final double FIELD_WIDTH = 300;
+    private static final double FORM_HGAP = 12;
+    private static final double FORM_VGAP = 10;
+    private static final double FORM_PADDING = 12;
+
+    // Значения полей формы, введённые пользователем
+    private record TicketForm(String type, String card, String name, String room,
+                              String urgency, String time, String address) {
+    }
+
     private TicketDialog() {
     }
 
-    public static Optional<Ticket> showForCreate(Stage stage) {
+    public static Optional<RegularTicket> showForCreate(Stage stage) {
         return show(stage, "Добавить талон", null);
     }
 
-    public static Optional<Ticket> showForEdit(Stage stage, Ticket ticket) {
+    public static Optional<RegularTicket> showForEdit(Stage stage, RegularTicket ticket) {
         return show(stage, "Редактировать талон", ticket);
     }
 
-    private static Optional<Ticket> show(Stage stage, String title, Ticket source) {
+    private static Optional<RegularTicket> show(Stage stage, String title, RegularTicket source) {
         Dialog<ButtonType> dialog = new Dialog<>();
         dialog.setTitle(title);
         dialog.initOwner(stage);
         dialog.getDialogPane().getButtonTypes().addAll(ButtonType.OK, ButtonType.CANCEL);
 
         ComboBox<String> typeBox = new ComboBox<>();
-        typeBox.getItems().addAll("Обычный талон", "Вызов на дом");
-        if (source instanceof HomeVisitTicket) {
-            typeBox.setValue("Вызов на дом");
-        } else {
-            typeBox.setValue("Обычный талон");
-        }
+        typeBox.getItems().addAll(REGULAR_TYPE, HOME_TYPE);
+        typeBox.setValue(source instanceof HomeVisitTicket ? HOME_TYPE : REGULAR_TYPE);
         if (source != null) {
             typeBox.setDisable(true); // При редактировании тип не меняем
         }
@@ -53,29 +62,29 @@ public final class TicketDialog {
         TextField timeField = new TextField(source == null
                 ? LocalDateTime.now().withSecond(0).withNano(0).toString()
                 : source.getTakenAt().toString());
-        TextField addressField = new TextField(source instanceof HomeVisitTicket h ? h.getAddress() : "");
+        TextField addressField = new TextField(source == null ? "" : source.getAddress());
 
         Label addressLabel = new Label("Адрес:");
-        addressLabel.setVisible(typeBox.getValue().equals("Вызов на дом"));
-        addressField.setVisible(typeBox.getValue().equals("Вызов на дом"));
+        addressLabel.setVisible(HOME_TYPE.equals(typeBox.getValue()));
+        addressField.setVisible(HOME_TYPE.equals(typeBox.getValue()));
 
         typeBox.setOnAction(e -> {
-            boolean isHome = "Вызов на дом".equals(typeBox.getValue());
+            boolean isHome = HOME_TYPE.equals(typeBox.getValue());
             addressLabel.setVisible(isHome);
             addressField.setVisible(isHome);
         });
 
         GridPane form = new GridPane();
-        form.setHgap(12);
-        form.setVgap(10);
-        form.setPadding(new Insets(12));
+        form.setHgap(FORM_HGAP);
+        form.setVgap(FORM_VGAP);
+        form.setPadding(new Insets(FORM_PADDING));
 
         form.add(new Label("Тип талона:"), 0, 0);
         form.add(typeBox, 1, 0);
         addField(form, 1, "Номер карты:", cardField);
         addField(form, 2, "ФИО пациента:", nameField);
         addField(form, 3, "Кабинет:", roomField);
-        addField(form, 4, "Срочность (0-3):", urgencyField);
+        addField(form, 4, "Срочность (" + Ticket.MIN_URGENCY + "-" + Ticket.MAX_URGENCY + "):", urgencyField);
         addField(form, 5, "Время взятия:", timeField);
         form.add(addressLabel, 0, 6);
         form.add(addressField, 1, 6);
@@ -88,7 +97,9 @@ public final class TicketDialog {
                 return Optional.empty();
             }
 
-            Ticket ticket = parseTicket(stage, typeBox.getValue(), cardField, nameField, roomField, urgencyField, timeField, addressField);
+            TicketForm values = new TicketForm(typeBox.getValue(), cardField.getText(), nameField.getText(),
+                    roomField.getText(), urgencyField.getText(), timeField.getText(), addressField.getText());
+            RegularTicket ticket = parseTicket(stage, values);
             if (ticket == null) {
                 continue;
             }
@@ -103,54 +114,33 @@ public final class TicketDialog {
         }
     }
 
-    private static Ticket parseTicket(
-            Stage stage,
-            String selectedType,
-            TextField cardField,
-            TextField nameField,
-            TextField roomField,
-            TextField urgencyField,
-            TextField timeField,
-            TextField addressField
-    ) {
+    private static RegularTicket parseTicket(Stage stage, TicketForm form) {
         int urgency;
         try {
-            urgency = Integer.parseInt(urgencyField.getText().trim());
+            urgency = Integer.parseInt(form.urgency().trim());
         } catch (NumberFormatException e) {
-            Dialogs.error(stage, "Срочность должна быть числом от 0 до 3");
+            Dialogs.error(stage, "Срочность должна быть числом от "
+                    + Ticket.MIN_URGENCY + " до " + Ticket.MAX_URGENCY);
             return null;
         }
 
         LocalDateTime takenAt;
         try {
-            takenAt = LocalDateTime.parse(timeField.getText().trim());
+            takenAt = LocalDateTime.parse(form.time().trim());
         } catch (DateTimeParseException e) {
             Dialogs.error(stage, "Неверный формат времени, пример: 2026-09-24T10:30");
             return null;
         }
 
-        if ("Вызов на дом".equals(selectedType)) {
-            return new HomeVisitTicket(
-                    cardField.getText().trim(),
-                    nameField.getText().trim(),
-                    roomField.getText().trim(),
-                    urgency,
-                    takenAt,
-                    addressField.getText().trim()
-            );
-        } else {
-            return new Ticket(
-                    cardField.getText().trim(),
-                    nameField.getText().trim(),
-                    roomField.getText().trim(),
-                    urgency,
-                    takenAt
-            );
+        if (HOME_TYPE.equals(form.type())) {
+            return new HomeVisitTicket(form.card().trim(), form.name().trim(), form.room().trim(),
+                    urgency, takenAt, form.address().trim());
         }
+        return new RegularTicket(form.card().trim(), form.name().trim(), form.room().trim(), urgency, takenAt);
     }
 
     private static void addField(GridPane form, int row, String label, TextField field) {
-        field.setPrefWidth(300);
+        field.setPrefWidth(FIELD_WIDTH);
         form.add(new Label(label), 0, row);
         form.add(field, 1, row);
     }
