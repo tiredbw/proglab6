@@ -31,6 +31,9 @@ public final class TicketDialog {
                               String urgency, String time, String address) {
     }
 
+    public record Priority(int urgency, LocalDateTime takenAt) {
+    }
+
     private TicketDialog() {
     }
 
@@ -42,11 +45,37 @@ public final class TicketDialog {
         return show(stage, "Редактировать талон", ticket);
     }
 
+    public static Optional<Priority> showForPriority(Stage stage, RegularTicket ticket) {
+        Dialog<ButtonType> dialog = createDialog(stage, "Изменить приоритет");
+        TextField urgencyField = new TextField(String.valueOf(ticket.getUrgency()));
+        TextField timeField = new TextField(ticket.getTakenAt().toString());
+
+        GridPane form = createForm();
+        addField(form, 0, urgencyLabel(), urgencyField);
+        addField(form, 1, "Время взятия:", timeField);
+        dialog.getDialogPane().setContent(form);
+
+        while (isConfirmed(dialog)) {
+            Integer urgency = parseUrgency(stage, urgencyField.getText());
+            LocalDateTime takenAt = urgency == null ? null : parseTime(stage, timeField.getText());
+            if (takenAt == null) {
+                continue;
+            }
+
+            // Проверяем на черновике: сам талон меняется только через кучу
+            RegularTicket draft = new RegularTicket(ticket.getCardNumber(), ticket.getFullName(),
+                    ticket.getRoom(), urgency, takenAt);
+            List<String> validationErrors = draft.validate();
+            if (validationErrors.isEmpty()) {
+                return Optional.of(new Priority(urgency, takenAt));
+            }
+            Dialogs.error(stage, String.join("\n", validationErrors));
+        }
+        return Optional.empty();
+    }
+
     private static Optional<RegularTicket> show(Stage stage, String title, RegularTicket source) {
-        Dialog<ButtonType> dialog = new Dialog<>();
-        dialog.setTitle(title);
-        dialog.initOwner(stage);
-        dialog.getDialogPane().getButtonTypes().addAll(ButtonType.OK, ButtonType.CANCEL);
+        Dialog<ButtonType> dialog = createDialog(stage, title);
 
         ComboBox<String> typeBox = new ComboBox<>();
         typeBox.getItems().addAll(REGULAR_TYPE, HOME_TYPE);
@@ -74,29 +103,20 @@ public final class TicketDialog {
             addressField.setVisible(isHome);
         });
 
-        GridPane form = new GridPane();
-        form.setHgap(FORM_HGAP);
-        form.setVgap(FORM_VGAP);
-        form.setPadding(new Insets(FORM_PADDING));
-
+        GridPane form = createForm();
         form.add(new Label("Тип талона:"), 0, 0);
         form.add(typeBox, 1, 0);
         addField(form, 1, "Номер карты:", cardField);
         addField(form, 2, "ФИО пациента:", nameField);
         addField(form, 3, "Кабинет:", roomField);
-        addField(form, 4, "Срочность (" + Ticket.MIN_URGENCY + "-" + Ticket.MAX_URGENCY + "):", urgencyField);
+        addField(form, 4, urgencyLabel(), urgencyField);
         addField(form, 5, "Время взятия:", timeField);
         form.add(addressLabel, 0, 6);
         form.add(addressField, 1, 6);
 
         dialog.getDialogPane().setContent(form);
 
-        while (true) {
-            Optional<ButtonType> result = dialog.showAndWait();
-            if (result.isEmpty() || result.get() != ButtonType.OK) {
-                return Optional.empty();
-            }
-
+        while (isConfirmed(dialog)) {
             TicketForm values = new TicketForm(typeBox.getValue(), cardField.getText(), nameField.getText(),
                     roomField.getText(), urgencyField.getText(), timeField.getText(), addressField.getText());
             RegularTicket ticket = parseTicket(stage, values);
@@ -112,23 +132,16 @@ public final class TicketDialog {
 
             return Optional.of(ticket);
         }
+        return Optional.empty();
     }
 
     private static RegularTicket parseTicket(Stage stage, TicketForm form) {
-        int urgency;
-        try {
-            urgency = Integer.parseInt(form.urgency().trim());
-        } catch (NumberFormatException e) {
-            Dialogs.error(stage, "Срочность должна быть числом от "
-                    + Ticket.MIN_URGENCY + " до " + Ticket.MAX_URGENCY);
+        Integer urgency = parseUrgency(stage, form.urgency());
+        if (urgency == null) {
             return null;
         }
-
-        LocalDateTime takenAt;
-        try {
-            takenAt = LocalDateTime.parse(form.time().trim());
-        } catch (DateTimeParseException e) {
-            Dialogs.error(stage, "Неверный формат времени, пример: 2026-09-24T10:30");
+        LocalDateTime takenAt = parseTime(stage, form.time());
+        if (takenAt == null) {
             return null;
         }
 
@@ -137,6 +150,49 @@ public final class TicketDialog {
                     urgency, takenAt, form.address().trim());
         }
         return new RegularTicket(form.card().trim(), form.name().trim(), form.room().trim(), urgency, takenAt);
+    }
+
+    private static Integer parseUrgency(Stage stage, String text) {
+        try {
+            return Integer.parseInt(text.trim());
+        } catch (NumberFormatException e) {
+            Dialogs.error(stage, "Срочность должна быть числом от "
+                    + Ticket.MIN_URGENCY + " до " + Ticket.MAX_URGENCY);
+            return null;
+        }
+    }
+
+    private static LocalDateTime parseTime(Stage stage, String text) {
+        try {
+            return LocalDateTime.parse(text.trim());
+        } catch (DateTimeParseException e) {
+            Dialogs.error(stage, "Неверный формат времени, пример: 2026-09-24T10:30");
+            return null;
+        }
+    }
+
+    private static Dialog<ButtonType> createDialog(Stage stage, String title) {
+        Dialog<ButtonType> dialog = new Dialog<>();
+        dialog.setTitle(title);
+        dialog.initOwner(stage);
+        dialog.getDialogPane().getButtonTypes().addAll(ButtonType.OK, ButtonType.CANCEL);
+        return dialog;
+    }
+
+    private static GridPane createForm() {
+        GridPane form = new GridPane();
+        form.setHgap(FORM_HGAP);
+        form.setVgap(FORM_VGAP);
+        form.setPadding(new Insets(FORM_PADDING));
+        return form;
+    }
+
+    private static boolean isConfirmed(Dialog<ButtonType> dialog) {
+        return dialog.showAndWait().filter(ButtonType.OK::equals).isPresent();
+    }
+
+    private static String urgencyLabel() {
+        return "Срочность (" + Ticket.MIN_URGENCY + "-" + Ticket.MAX_URGENCY + "):";
     }
 
     private static void addField(GridPane form, int row, String label, TextField field) {
