@@ -41,12 +41,13 @@ public final class HeapBenchmark {
         rows.add(measure("insert, n вставок", HeapBenchmark::ownInsert, HeapBenchmark::javaInsert));
         rows.add(measure("extractMin, n извлечений", HeapBenchmark::ownExtract, HeapBenchmark::javaExtract));
         rows.add(measure("find, " + LOOKUPS + " поисков", HeapBenchmark::ownFind, HeapBenchmark::javaFind));
-        rows.add(measure("delete, " + LOOKUPS + " удалений", HeapBenchmark::ownDelete, HeapBenchmark::javaDelete));
+        rows.add(measure("find + delete, " + LOOKUPS + " удалений", HeapBenchmark::ownDelete, HeapBenchmark::javaDelete));
         rows.add(measure("topK, k=" + TOP_K + ", " + TOP_K_REPEATS + " раз",
                 HeapBenchmark::ownTopK, HeapBenchmark::javaTopK));
-        rows.add(measure("changePriority, " + LOOKUPS + " изменений",
+        rows.add(measure("find + changePriority, " + LOOKUPS + " изменений",
                 HeapBenchmark::ownChange, HeapBenchmark::javaChange));
-        rows.add(measure("merge, две очереди по n", HeapBenchmark::ownMerge, HeapBenchmark::javaMerge));
+        rows.add(measure("merge, две случайные очереди по n", HeapBenchmark::ownMerge, HeapBenchmark::javaMerge));
+        rows.add(measure("merge, вторая очередь срочнее первой", HeapBenchmark::ownMergeWorst, HeapBenchmark::javaMergeWorst));
 
         System.out.println("Прогрев: " + WARMUP_RUNS + " прогонов, замер: " + MEASURED_RUNS
                 + " прогонов, значение: медиана, мс. Java " + Runtime.version() + ".");
@@ -266,12 +267,42 @@ public final class HeapBenchmark {
         };
     }
 
+    private static List<Ticket> withUrgency(List<Ticket> tickets, int urgency) {
+        List<Ticket> result = new ArrayList<>(tickets.size());
+        for (Ticket ticket : tickets) {
+            result.add(new RegularTicket(ticket.getCardNumber(), ticket.getFullName(), ticket.getRoom(),
+                    urgency, ticket.getTakenAt()));
+        }
+        return result;
+    }
+
     private static Runnable ownMerge(int size) {
         List<Ticket> tickets = tickets(size);
         TicketHeap<Ticket> first = ownHeap(tickets);
         TicketHeap<Ticket> second = ownHeap(tickets);
         return () -> {
             first.merge(second);
+            sink += first.size();
+        };
+    }
+
+    // Плохой случай для вставок по одной: каждый элемент второй очереди всплывает до верха первой
+    private static Runnable ownMergeWorst(int size) {
+        List<Ticket> tickets = tickets(size);
+        TicketHeap<Ticket> first = ownHeap(withUrgency(tickets, Ticket.MAX_URGENCY));
+        TicketHeap<Ticket> second = ownHeap(withUrgency(tickets, Ticket.MIN_URGENCY));
+        return () -> {
+            first.merge(second);
+            sink += first.size();
+        };
+    }
+
+    private static Runnable javaMergeWorst(int size) {
+        List<Ticket> tickets = tickets(size);
+        PriorityQueue<Ticket> first = javaQueue(withUrgency(tickets, Ticket.MAX_URGENCY));
+        PriorityQueue<Ticket> second = javaQueue(withUrgency(tickets, Ticket.MIN_URGENCY));
+        return () -> {
+            first.addAll(second);
             sink += first.size();
         };
     }
