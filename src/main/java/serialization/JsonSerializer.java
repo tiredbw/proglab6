@@ -7,7 +7,6 @@ import com.fasterxml.jackson.databind.ObjectMapper;
 import com.fasterxml.jackson.databind.SerializationFeature;
 import com.fasterxml.jackson.datatype.jsr310.JavaTimeModule;
 import model.Ticket;
-import model.TicketType;
 
 import java.io.IOException;
 import java.nio.file.Path;
@@ -86,19 +85,7 @@ public class JsonSerializer implements Serializer {
             throw corrupted("запись " + number + " пуста");
         }
 
-        TicketType type = TicketType.parse(dto.type()).orElseThrow(() ->
-                new SerializationException(SerializationErrorCode.UNKNOWN_TYPE,
-                        "Запись " + number + ": неизвестный тип " + dto.type()));
-        if (dto.urgency() == null) {
-            throw corrupted("запись " + number + ": нет срочности");
-        }
-
-        try {
-            return type.create(dto.cardNumber(), dto.fullName(), dto.room(), dto.urgency(),
-                    dto.takenAt(), dto.address());
-        } catch (IllegalArgumentException e) {
-            throw corrupted("запись " + number + ": " + e.getMessage());
-        }
+        return dto.toTicket(number);
     }
 
     private SerializationException corrupted(String details) {

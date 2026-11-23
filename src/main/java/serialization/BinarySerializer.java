@@ -1,122 +1,105 @@
 package serialization;
 
 import model.Ticket;
-import model.TicketType;
 
 import java.io.BufferedInputStream;
 import java.io.BufferedOutputStream;
 import java.io.DataInputStream;
-import java.io.DataOutputStream;
 import java.io.EOFException;
 import java.io.IOException;
-import java.io.UTFDataFormatException;
+import java.io.ObjectInputFilter;
+import java.io.ObjectInputStream;
+import java.io.ObjectOutputStream;
+import java.io.ObjectStreamConstants;
+import java.io.ObjectStreamException;
+import java.io.Serial;
+import java.io.Serializable;
 import java.nio.file.Files;
 import java.nio.file.Path;
-import java.time.DateTimeException;
-import java.time.LocalDateTime;
-import java.time.ZoneOffset;
 import java.util.ArrayList;
 import java.util.List;
 
-// Формат файла:
-//   заголовок: magic (4 байта), версия (short), количество записей (int);
-//   запись: код типа (byte), карта, ФИО, кабинет (UTF), срочность (byte),
-//           время (long секунды и int наносекунды), адрес (UTF, только у HOME).
-public class BinarySerializer implements Serializer {
-    static final int MAGIC = 0x51554555; // Байты ASCII "QUEU"
-    static final short VERSION = 1;
-    private static final String EXTENSION = "bin";
+public final class BinarySerializer implements Serializer {
+    static final int VERSION = 1;
+    private static final int MAGIC = Short.toUnsignedInt(ObjectStreamConstants.STREAM_MAGIC);
+    private static final ObjectInputFilter FILTER = ObjectInputFilter.Config.createFilter(
+            "maxdepth=8;serialization.BinarySerializer$QueueFile;"
+                    + "serialization.TicketDto;java.lang.Integer;java.lang.Number;"
+                    + "java.time.Ser;java.time.LocalDateTime;!*");
+
+    record QueueFile(int formatVersion, TicketDto[] tickets) implements Serializable {
+        @Serial
+        private static final long serialVersionUID = 1L;
+    }
 
     @Override
     public String extension() {
-        return EXTENSION;
+        return "bin";
     }
 
     @Override
     public void write(Path file, List<Ticket> tickets) throws IOException {
-        try (DataOutputStream out = new DataOutputStream(
-                new BufferedOutputStream(Files.newOutputStream(file)))) {
-            out.writeInt(MAGIC);
-            out.writeShort(VERSION);
-            out.writeInt(tickets.size());
-            for (Ticket ticket : tickets) {
-                writeTicket(out, ticket);
-            }
-        }
-    }
-
-    private void writeTicket(DataOutputStream out, Ticket ticket) throws IOException {
-        out.writeByte(ticket.type().code());
-        out.writeUTF(ticket.getCardNumber());
-        out.writeUTF(ticket.getFullName());
-        out.writeUTF(ticket.getRoom());
-        out.writeByte(ticket.getUrgency());
-        out.writeLong(ticket.getTakenAt().toEpochSecond(ZoneOffset.UTC));
-        out.writeInt(ticket.getTakenAt().getNano());
-        if (ticket.type() == TicketType.HOME) {
-            out.writeUTF(ticket.getAddress());
+        TicketDto[] records = tickets.stream().map(TicketDto::from).toArray(TicketDto[]::new);
+        try (var out = new ObjectOutputStream(new BufferedOutputStream(Files.newOutputStream(file)))) {
+            out.writeObject(new QueueFile(VERSION, records));
         }
     }
 
     @Override
     public List<Ticket> read(Path file) throws IOException, SerializationException {
-        try (DataInputStream in = new DataInputStream(
-                new BufferedInputStream(Files.newInputStream(file)))) {
-            int count = readHeader(in);
-            // Память под записи не выделяем заранее: в испорченном заголовке может быть огромное число
-            List<Ticket> tickets = new ArrayList<>();
-            for (int i = 0; i < count; i++) {
-                tickets.add(readTicket(in, i + 1));
+        long fileSize = Files.size(file);
+        try (var stream = new BufferedInputStream(Files.newInputStream(file))) {
+            var header = new DataInputStream(stream);
+            stream.mark(Integer.BYTES);
+            int prefix = header.readUnsignedShort();
+            stream.reset();
+            if (prefix != MAGIC) {
+                return new LegacyBinaryReader().read(header);
             }
-            if (in.read() != -1) {
-                throw corrupted("после последней записи остались лишние байты");
+            try (var in = new ObjectInputStream(stream)) {
+                in.setObjectInputFilter(info -> info.arrayLength() > fileSize
+                        ? ObjectInputFilter.Status.REJECTED : FILTER.checkInput(info));
+                if (!(in.readObject() instanceof QueueFile queue)) {
+                    throw corrupted("ожидался снимок очереди");
+                }
+                List<Ticket> tickets = restore(queue);
+                checkEnd(in);
+                return tickets;
             }
-            return tickets;
         } catch (EOFException e) {
             throw corrupted("файл обрезан");
-        } catch (UTFDataFormatException e) {
-            throw corrupted("испорчена строка");
+        } catch (ObjectStreamException | ClassNotFoundException e) {
+            throw corrupted("неверное содержимое бинарного потока");
         }
     }
 
-    private int readHeader(DataInputStream in) throws IOException, SerializationException {
-        int magic = in.readInt();
-        if (magic != MAGIC) {
-            throw new SerializationException(SerializationErrorCode.BAD_MAGIC,
-                    "Файл не является очередью талонов");
-        }
-        short version = in.readShort();
-        if (version != VERSION) {
+    private List<Ticket> restore(QueueFile queue) throws SerializationException {
+        if (queue.formatVersion() != VERSION) {
             throw new SerializationException(SerializationErrorCode.UNSUPPORTED_VERSION,
-                    "Версия файла " + version + " не поддерживается, ожидается " + VERSION);
+                    "Версия файла " + queue.formatVersion() + " не поддерживается, ожидается " + VERSION);
         }
-        int count = in.readInt();
-        if (count < 0) {
-            throw corrupted("отрицательное количество записей");
+        TicketDto[] records = queue.tickets();
+        if (records == null) {
+            throw corrupted("нет массива талонов");
         }
-        return count;
+        List<Ticket> tickets = new ArrayList<>(records.length);
+        for (TicketDto record : records) {
+            int number = tickets.size() + 1;
+            if (record == null) {
+                throw TicketDto.invalidRecord(number, "пустой талон");
+            }
+            tickets.add(record.toTicket(number));
+        }
+        return tickets;
     }
 
-    private Ticket readTicket(DataInputStream in, int number) throws IOException, SerializationException {
-        int typeCode = in.readByte();
-        TicketType type = TicketType.fromCode(typeCode).orElseThrow(() ->
-                new SerializationException(SerializationErrorCode.UNKNOWN_TYPE,
-                        "Запись " + number + ": неизвестный код типа " + typeCode));
-
-        String cardNumber = in.readUTF();
-        String fullName = in.readUTF();
-        String room = in.readUTF();
-        int urgency = in.readByte();
-        long seconds = in.readLong();
-        int nanos = in.readInt();
-        String address = type == TicketType.HOME ? in.readUTF() : "";
-
+    private void checkEnd(ObjectInputStream in) throws IOException, ClassNotFoundException, SerializationException {
         try {
-            LocalDateTime takenAt = LocalDateTime.ofEpochSecond(seconds, nanos, ZoneOffset.UTC);
-            return type.create(cardNumber, fullName, room, urgency, takenAt, address);
-        } catch (DateTimeException | IllegalArgumentException e) {
-            throw corrupted("запись " + number + ": " + e.getMessage());
+            in.readObject();
+        } catch (EOFException endOfFile) {
+            return;
         }
+        throw corrupted("после снимка очереди остались лишние данные");
     }
 
     private SerializationException corrupted(String details) {

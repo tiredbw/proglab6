@@ -96,11 +96,14 @@ public class TicketHeap<T> {
             int index = candidates.extractMin();
             visit(index);
             result.add(items[index]);
-            if (left(index) < size) {
-                candidates.insert(left(index));
+            int leftChild = left(index);
+            int rightChild = right(index);
+            // Нижний уровень может быть неполным, заняты только индексы от 0 до size - 1.
+            if (leftChild < size) {
+                candidates.insert(leftChild);
             }
-            if (right(index) < size) {
-                candidates.insert(right(index));
+            if (rightChild < size) {
+                candidates.insert(rightChild);
             }
         }
         return result;

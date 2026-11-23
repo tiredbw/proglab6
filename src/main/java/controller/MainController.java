@@ -16,6 +16,9 @@ import javafx.stage.Stage;
 import model.Editable;
 import model.RegularTicket;
 import model.Ticket;
+import serialization.BinarySerializer;
+import serialization.JsonSerializer;
+import serialization.Serializer;
 import service.RaceDemo;
 import service.TicketGenerator;
 import structure.TicketHeap;
@@ -72,9 +75,14 @@ public class MainController {
                 prepared(editButton, this::editTicket),
                 button("Загрузить CSV", files::loadCsv),
                 button("Сохранить CSV", files::saveCsv),
-                button("Слить с CSV-файлом", files::mergeCsv),
-                button("Экспорт", files::exportQueue),
-                button("Импорт", files::importQueue));
+                button("Слить с CSV-файлом", files::mergeCsv));
+        Serializer json = new JsonSerializer();
+        Serializer binary = new BinarySerializer();
+        FlowPane serializationButtons = buttonRow(
+                button("Импорт JSON", () -> files.importQueue(json)),
+                button("Экспорт JSON", () -> files.exportQueue(json)),
+                button("Импорт BIN", () -> files.importQueue(binary)),
+                button("Экспорт BIN", () -> files.exportQueue(binary)));
         FlowPane queueButtons = buttonRow(
                 button("Извлечь минимум", this::extractMin),
                 button("Найти", this::findTicket),
@@ -84,7 +92,7 @@ public class MainController {
                 button("Сгенерировать", this::generate),
                 button("Демонстрация гонки", this::showRace));
 
-        VBox toolbar = new VBox(BUTTON_GAP, fileButtons, queueButtons);
+        VBox toolbar = new VBox(BUTTON_GAP, fileButtons, serializationButtons, queueButtons);
         toolbar.disableProperty().bind(tasks.busyProperty());
 
         SplitPane content = new SplitPane(table, heapCanvas);
